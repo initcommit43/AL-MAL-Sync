@@ -1,0 +1,7 @@
+manual_mappings:
+  - anilist_id: 12345
+    mal_id: 67890
+    comment: "Season 2 mapped manually"
+ignore:
+  anilist_ids: []
+  titles: []

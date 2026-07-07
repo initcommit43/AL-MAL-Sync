@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# local config/secrets
+config.yaml
+mappings.yaml
+token.json
+.env
+
+# caches
+.cache/
+*.cache/
+
+.pytest_cache/
+.ruff_cache/
+
+.vscode/
+.idea/

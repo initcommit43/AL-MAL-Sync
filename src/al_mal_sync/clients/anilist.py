@@ -1,0 +1,1 @@
+"""AniList GraphQL API client."""

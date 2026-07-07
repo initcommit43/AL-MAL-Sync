@@ -1,0 +1,16 @@
+oauth:
+  port: 18080
+  redirect_uri: "http://localhost:18080/callback"
+anilist:
+  client_id: ""
+  client_secret: ""
+  username: ""
+myanimelist:
+  client_id: ""
+  client_secret: ""
+  username: ""
+token_file_path: ""       # default: ~/.config/al-mal-sync/token.json
+mappings_file_path: ""    # default: ~/.config/al-mal-sync/mappings.yaml
+sync:
+  direction: "anilist_to_mal"  # or "mal_to_anilist"
+  dry_run: false
