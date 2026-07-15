@@ -10,7 +10,18 @@ dist/
 config.yaml
 mappings.yaml
 token.json
+token*.tmp
+credentials*.json
+secrets*.yaml
+secrets*.yml
 .env
+.env.*
+
+# local runtime state (unmapped entries, id-mapping caches)
+state/
+aod-cache/
+hato-cache/
+jikan-cache/
 
 # caches
 .cache/
@@ -21,3 +32,9 @@ token.json
 
 .vscode/
 .idea/
+
+# Claude/AI working notes - never commit
+CLAUDE.md
+PLAN.md
+NOTES.md
+.claude/

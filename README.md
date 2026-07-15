@@ -6,4 +6,6 @@ Guideline reference for tricky sync logic: [bigspawn/anilist-mal-sync](https://g
 
 ## Status
 
-Early scaffolding — no functionality implemented yet.
+Early scaffolding. Config loading (`config.py`) is implemented and tested; everything
+else is still a stub. See `PLAN.md` (not committed, local reference only) for the
+phased build plan.
