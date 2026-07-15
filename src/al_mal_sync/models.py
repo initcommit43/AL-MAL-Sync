@@ -145,7 +145,7 @@ _SIMILARITY_THRESHOLD = 98.0
 _LEVENSHTEIN_THRESHOLD = 98.0
 
 
-def _normalize_title(title: str) -> str:
+def normalize_title(title: str) -> str:
     normalized = title.lower()
     normalized = _BRACKETS_RE.sub("", normalized)
     for old, new in ((":", ""), ("!", ""), ("?", ""), (".", ""), ("-", " "), ("_", " ")):
@@ -175,8 +175,8 @@ def _levenshtein_distance(s1: str, s2: str) -> int:
 
 
 def _title_similarity(title1: str, title2: str) -> float:
-    normalized1 = _normalize_title(title1)
-    normalized2 = _normalize_title(title2)
+    normalized1 = normalize_title(title1)
+    normalized2 = normalize_title(title2)
     if normalized1 == normalized2:
         return 100.0
 
@@ -191,8 +191,8 @@ def _title_similarity(title1: str, title2: str) -> float:
 
 
 def _title_levenshtein_similarity(title1: str, title2: str) -> float:
-    normalized1 = _normalize_title(title1)
-    normalized2 = _normalize_title(title2)
+    normalized1 = normalize_title(title1)
+    normalized2 = normalize_title(title2)
     if normalized1 == normalized2:
         return 100.0
 
@@ -209,7 +209,7 @@ def _exact_match(t1: str, t2: str) -> bool:
 
 
 def _normalized_match(t1: str, t2: str) -> bool:
-    return bool(t1) and bool(t2) and _normalize_title(t1) == _normalize_title(t2)
+    return bool(t1) and bool(t2) and normalize_title(t1) == normalize_title(t2)
 
 
 def _fuzzy_match(t1: str, t2: str, threshold: float) -> bool:
@@ -220,7 +220,7 @@ def _levenshtein_match(t1: str, t2: str, threshold: float) -> bool:
     return bool(t1) and bool(t2) and _title_levenshtein_similarity(t1, t2) >= threshold
 
 
-def _title_matching_levels(
+def title_matching_levels(
     title_en1: str, title_jp1: str, title_romaji1: str,
     title_en2: str, title_jp2: str, title_romaji2: str,
 ) -> bool:
@@ -349,7 +349,7 @@ class Anime:
     def same_title_with_target(self, target: Target) -> bool:
         if not isinstance(target, Anime):
             return False
-        if not _title_matching_levels(
+        if not title_matching_levels(
             self.title_en, self.title_jp, self.title_romaji,
             target.title_en, target.title_jp, target.title_romaji,
         ):
@@ -546,7 +546,7 @@ class Manga:
     def same_title_with_target(self, target: Target) -> bool:
         if not isinstance(target, Manga):
             return False
-        return _title_matching_levels(
+        return title_matching_levels(
             self.title_en, self.title_jp, self.title_romaji,
             target.title_en, target.title_jp, target.title_romaji,
         )

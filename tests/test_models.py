@@ -25,8 +25,8 @@ from al_mal_sync.models import (
     AnimeStatus,
     Manga,
     MangaStatus,
-    _normalize_title,
-    _title_matching_levels,
+    normalize_title,
+    title_matching_levels,
 )
 from al_mal_sync.sync.score import POINT_100
 
@@ -39,19 +39,19 @@ def _anime(**overrides: object) -> Anime:
 
 class TestTitleMatching:
     def test_normalize_strips_brackets_punctuation_and_case(self) -> None:
-        assert _normalize_title("Attack on Titan (TV)!") == "attack on titan"
+        assert normalize_title("Attack on Titan (TV)!") == "attack on titan"
 
     def test_exact_match_after_normalization(self) -> None:
-        assert _title_matching_levels("Attack on Titan!", "", "", "attack on titan", "", "")
+        assert title_matching_levels("Attack on Titan!", "", "", "attack on titan", "", "")
 
     def test_fuzzy_match_on_shared_words(self) -> None:
-        assert _title_matching_levels(
+        assert title_matching_levels(
             "Fullmetal Alchemist Brotherhood", "", "",
             "Fullmetal Alchemist: Brotherhood", "", "",
         )
 
     def test_no_match_for_unrelated_titles(self) -> None:
-        assert not _title_matching_levels("Cowboy Bebop", "", "", "Naruto", "", "")
+        assert not title_matching_levels("Cowboy Bebop", "", "", "Naruto", "", "")
 
 
 class TestAnimeProgress:
