@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ..mapping.manual_mappings import MappingsConfig
     from ..mapping.strategies import StrategyChain
     from ..models import Source, Target
+    from .conflict import ResolvedMatch
     from .service import (
         AniListAnimeService,
         AniListMangaService,
@@ -50,6 +51,10 @@ class SyncOutcome:
     unmatched: list[UnmatchedEntry] = field(default_factory=list)
     conflicts: list[Conflict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Every source/target pair that survived dedup, win or lose on the
+    # progress-sync outcome above -- sync/favorites.py reuses these id
+    # mappings instead of re-running strategy matching.
+    matched: list[ResolvedMatch] = field(default_factory=list)
 
 
 class _WarningCollector:
@@ -93,6 +98,7 @@ class Updater:
             matches = self._resolve(ordered_sources, existing_targets, outcome)
 
         resolved, outcome.conflicts = resolve_duplicates(matches)
+        outcome.matched = resolved
 
         for item in resolved:
             self._process(item.source, item.match.target, outcome)
