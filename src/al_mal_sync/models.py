@@ -23,7 +23,7 @@ from .sync.score import normalize_score_for_mal
 
 if TYPE_CHECKING:
     from .clients.anilist import AniListListEntry, AniListMedia
-    from .clients.myanimelist import MALUserAnimeEntry, MALUserMangaEntry
+    from .clients.myanimelist import MALAnime, MALManga, MALUserAnimeEntry, MALUserMangaEntry
 
 
 # --------------------------------------------------------------------------
@@ -456,6 +456,20 @@ class Anime:
             is_reverse=reverse,
         )
 
+    @classmethod
+    def from_mal_media(cls, anime: MALAnime, *, reverse: bool) -> Anime:
+        """Build a bare Anime from a MAL search/lookup result (see
+        from_anilist_media for the same caveat about missing list data)."""
+        return cls(
+            id_anilist=0 if reverse else -1,  # see Anime.from_mal_entry for why
+            id_mal=anime.id,
+            title_en=anime.alternative_titles.en or anime.title,
+            title_jp=anime.alternative_titles.ja or anime.title,
+            num_episodes=anime.num_episodes,
+            season_year=anime.start_season_year or 0,
+            is_reverse=reverse,
+        )
+
 
 # --------------------------------------------------------------------------
 # Manga
@@ -616,5 +630,19 @@ class Manga:
             title_romaji=media.title.romaji,
             chapters=media.chapters or 0,
             volumes=media.volumes or 0,
+            is_reverse=reverse,
+        )
+
+    @classmethod
+    def from_mal_media(cls, manga: MALManga, *, reverse: bool) -> Manga:
+        """Build a bare Manga from a MAL search/lookup result (see
+        from_anilist_media for the same caveat about missing list data)."""
+        return cls(
+            id_anilist=0 if reverse else -1,  # see Manga.from_mal_entry for why
+            id_mal=manga.id,
+            title_en=manga.alternative_titles.en or manga.title,
+            title_jp=manga.alternative_titles.ja or manga.title,
+            chapters=manga.num_chapters,
+            volumes=manga.num_volumes,
             is_reverse=reverse,
         )
