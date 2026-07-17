@@ -1,0 +1,27 @@
+# Quick-start compose file. Copy to docker-compose.yaml, fill in the AniList/
+# MyAnimeList credentials below (or use config.yaml inside ./config instead),
+# then `docker compose run --rm al-mal-sync al-mal-sync login` once to
+# authenticate before switching to the long-running `watch` command.
+services:
+  al-mal-sync:
+    build: .
+    image: al-mal-sync:latest
+    container_name: al-mal-sync
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      ANILIST_CLIENT_ID: "your-anilist-client-id"
+      ANILIST_CLIENT_SECRET: "your-anilist-client-secret"
+      ANILIST_USERNAME: "your-anilist-username"
+      MAL_CLIENT_ID: "your-mal-client-id"
+      MAL_CLIENT_SECRET: "your-mal-client-secret"
+      MAL_USERNAME: "your-mal-username"
+      WATCH_INTERVAL: "6h"
+    volumes:
+      - ./config:/config
+    ports:
+      # Only needed while running `login` interactively; the OAuth callback
+      # server binds this port and exits once the browser redirect arrives.
+      - "18080:18080"
+    command: ["al-mal-sync", "watch", "-i", "6h"]

@@ -1,0 +1,8 @@
+# docker-entrypoint.sh's shebang breaks if checked out with CRLF (this repo's
+# been touched from a Windows box with core.autocrlf=true); force LF for
+# anything a Linux container/CI runner reads as a script or executes directly.
+docker-entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
