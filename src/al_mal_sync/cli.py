@@ -40,16 +40,19 @@ from .mapping.strategies import (
 from .models import Anime, Manga
 from .oauth import OAuth, OAuthError, create_anilist_oauth, create_myanimelist_oauth
 from .sync.favorites import (
+    FavoritesOutcome,
     build_id_mapping,
     check_anilist_favorites_against_mal,
     sync_mal_favorites_to_anilist,
 )
+from .sync.report import build_report, format_report
 from .sync.service import (
     AniListAnimeService,
     AniListMangaService,
     MyAnimeListAnimeService,
     MyAnimeListMangaService,
 )
+from .sync.statistics import SyncStatistics, format_statistics_table
 from .sync.updater import SyncOutcome, Updater
 from .unmapped import UnmappedRecord, load_unmapped_state, save_unmapped_state
 
@@ -212,34 +215,14 @@ def _build_strategy_chain(
     return StrategyChain(strategies)
 
 
-def _print_outcome(kind: str, reverse: bool, outcome: SyncOutcome) -> None:
+def _announce_kind(kind: str, reverse: bool) -> None:
     direction = "MyAnimeList -> AniList" if reverse else "AniList -> MyAnimeList"
-    click.echo(f"\n{kind} ({direction}):")
-    click.echo(f"  updated: {len(outcome.updated)}")
-    click.echo(f"  skipped (already in sync): {len(outcome.skipped)}")
-    if outcome.dry_run:
-        click.echo(f"  would update (dry-run): {len(outcome.dry_run)}")
-    click.echo(f"  unmatched: {len(outcome.unmatched)}")
-    if outcome.conflicts:
-        click.echo(f"  conflicts: {len(outcome.conflicts)}")
-    for warning in outcome.warnings:
-        click.secho(f"  warning: {warning}", fg="yellow")
-    if outcome.errors:
-        click.secho(f"  errors: {len(outcome.errors)}", fg="red")
-        for source, message in outcome.errors:
-            click.secho(f"    - {source.get_title()}: {message}", fg="red")
+    click.echo(f"Syncing {kind} ({direction})...")
 
 
-def _print_favorites_outcome(kind: str, write_outcome: Any, report_outcome: Any) -> None:
-    click.echo(f"\n{kind} favorites:")
-    click.echo(f"  added to AniList: {len(write_outcome.added_to_anilist)}")
-    if write_outcome.errors:
-        click.secho(f"  errors: {len(write_outcome.errors)}", fg="red")
-    if report_outcome.mismatched:
-        click.secho(
-            f"  AniList favorites missing on MAL (report only): {len(report_outcome.mismatched)}",
-            fg="yellow",
-        )
+def _print_summary(outcomes: dict[str, SyncOutcome], favorites_outcomes: dict[str, FavoritesOutcome]) -> None:
+    click.echo("\n" + format_statistics_table(SyncStatistics.from_outcomes(outcomes)))
+    click.echo("\n" + format_report(build_report(outcomes, favorites_outcomes)))
 
 
 def _invert(mapping: dict[int, int]) -> dict[int, int]:
@@ -318,7 +301,8 @@ def _run_sync(
     try:
         media_state: dict[str, tuple[SyncOutcome, list[Any]]] = {}
         for kind in media_kinds:
-            outcome, anilist_entries, target_service = _sync_one_kind(
+            _announce_kind(kind, reverse)
+            outcome, anilist_entries, _target_service = _sync_one_kind(
                 kind,
                 reverse=reverse,
                 score_format=score_format,
@@ -333,11 +317,16 @@ def _run_sync(
                 dry_run=dry_run,
             )
             media_state[kind] = (outcome, anilist_entries)
-            _print_outcome(kind, reverse, outcome)
             _persist_unmapped(config, kind, reverse, outcome)
 
+        favorites_outcomes: dict[str, FavoritesOutcome] = {}
         if favorites:
-            _sync_favorites(config, media_state, reverse=reverse, jikan_client=jikan_client, anilist_client=anilist_client)
+            favorites_outcomes = _sync_favorites(
+                config, media_state, reverse=reverse, jikan_client=jikan_client, anilist_client=anilist_client
+            )
+
+        outcomes = {kind: outcome for kind, (outcome, _entries) in media_state.items()}
+        _print_summary(outcomes, favorites_outcomes)
     except (AniListAPIError, MyAnimeListAPIError) as exc:
         raise click.ClickException(str(exc)) from exc
     finally:
@@ -435,21 +424,24 @@ def _sync_favorites(
     reverse: bool,
     jikan_client: JikanClient | None,
     anilist_client: AniListClient,
-) -> None:
+) -> dict[str, FavoritesOutcome]:
+    """Returns the AniList->MAL report-only outcome per media kind, for
+    _print_summary's report section to fold favorites mismatches into."""
     if jikan_client is None:
         click.secho(
             "warning: favorites sync requires the Jikan API; skipping "
             "(enable with --jikan-api or favorites.enabled in config)",
             fg="yellow", err=True,
         )
-        return
+        return {}
 
     try:
         mal_anime_fav_ids, mal_manga_fav_ids = jikan_client.get_user_favorites(config.myanimelist.username)
     except JikanApiError as exc:
         click.secho(f"warning: failed to fetch MAL favorites: {exc}", fg="yellow", err=True)
-        return
+        return {}
 
+    report_outcomes: dict[str, FavoritesOutcome] = {}
     for kind, (outcome, anilist_entries) in media_state.items():
         mal_fav_ids = mal_anime_fav_ids if kind == "anime" else mal_manga_fav_ids
         id_map = build_id_mapping(outcome.matched)
@@ -462,8 +454,16 @@ def _sync_favorites(
         write_outcome = sync_mal_favorites_to_anilist(
             mal_fav_ids, anilist_by_id, mal_to_anilist, anilist_client, media_kind=kind
         )
+        click.echo(f"{kind} favorites: added {len(write_outcome.added_to_anilist)} to AniList")
         report_outcome = check_anilist_favorites_against_mal(anilist_entries, mal_fav_ids, anilist_to_mal)
-        _print_favorites_outcome(kind, write_outcome, report_outcome)
+
+        # build_report only takes one FavoritesOutcome per kind; fold the
+        # write-side errors into the report-side mismatches so both surface
+        # in the final summary.
+        report_outcome.errors = write_outcome.errors
+        report_outcomes[kind] = report_outcome
+
+    return report_outcomes
 
 
 @main.command()
