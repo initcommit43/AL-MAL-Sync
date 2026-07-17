@@ -184,11 +184,39 @@ class TestSyncAndWatchFlagWiring:
         result = CliRunner().invoke(cli.main, ["watch"])
         assert result.exit_code != 0
 
-    def test_watch_with_schedule_reports_not_implemented(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_watch_with_invalid_cron_expression_is_a_clean_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(cli, "_run_sync", lambda config, **kw: None)
-        result = CliRunner().invoke(cli.main, ["watch", "-s", "0 * * * *"])
+        # 5 fields (passes Phase 1's shape check) but minute=99 is out of range.
+        result = CliRunner().invoke(cli.main, ["watch", "-s", "99 * * * *"])
         assert result.exit_code != 0
-        assert "isn't implemented" in result.output
+        assert "invalid watch schedule" in result.output
+
+    def test_watch_with_schedule_waits_for_next_fire_time_before_syncing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cron mode waits for the next scheduled time before syncing (like
+        crontab) -- unlike interval mode, it does not sync immediately on
+        startup unless --once is also passed."""
+        calls = []
+        monkeypatch.setattr(cli, "_run_sync", lambda config, **kw: calls.append(kw))
+
+        class _StopLoop(Exception):
+            pass
+
+        sleep_calls: list[float] = []
+
+        def _fake_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+            if len(sleep_calls) > 1:
+                raise _StopLoop
+
+        monkeypatch.setattr(cli.time, "sleep", _fake_sleep)
+        result = CliRunner().invoke(cli.main, ["watch", "-s", "0 * * * *"])
+        assert len(calls) == 1
+        assert isinstance(result.exception, _StopLoop)
+        assert "next sync at" in result.output
 
     def test_watch_with_interval_runs_loop_once_then_sleep_is_stubbed_to_stop(
         self, monkeypatch: pytest.MonkeyPatch

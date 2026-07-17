@@ -12,9 +12,11 @@ place since it already owns the run's flags/config.
 from __future__ import annotations
 
 import time
-from typing import Any
+from datetime import datetime
+from typing import Any, Callable
 
 import click
+from croniter import CroniterError, croniter
 
 from .clients.anilist import AniListAPIError, AniListClient
 from .clients.myanimelist import MyAnimeListAPIError, MyAnimeListClient
@@ -83,9 +85,7 @@ def _oauth_for(service: str, config: Config) -> OAuth:
 def _format_expiry(expiry: float | None) -> str:
     if expiry is None:
         return "never"
-    import datetime
-
-    return datetime.datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
+    return datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
 
 
 def _sync_options(f: Any) -> Any:
@@ -530,9 +530,8 @@ def watch(
     config.watch.validate()
 
     if config.watch.schedule:
-        raise click.ClickException(
-            "cron-based watch scheduling isn't implemented yet; use --interval or --once for now."
-        )
+        _run_cron_loop(config.watch.schedule, run_once)
+        return
 
     interval_delta = config.watch.get_interval()
     assert interval_delta is not None
@@ -541,6 +540,26 @@ def watch(
         run_once()
         click.echo(f"next sync in {interval_delta}")
         time.sleep(interval_delta.total_seconds())
+
+
+def _run_cron_loop(schedule: str, run_once: Callable[[], None]) -> None:
+    """Sync on a cron schedule, evaluated in local time (so the system's TZ,
+    not UTC, decides when "0 3 * * *" fires) -- matches PLAN.md Phase 10.
+    Phase 1's WatchConfig.validate() only checks the expression has 5
+    fields; croniter itself validates the field contents here."""
+    try:
+        cron = croniter(schedule, datetime.now())
+    except CroniterError as exc:
+        raise click.ClickException(f"invalid watch schedule {schedule!r}: {exc}") from exc
+
+    click.echo(f"watch mode: syncing on schedule {schedule!r}")
+    while True:
+        next_run: datetime = cron.get_next(datetime)
+        wait_seconds = (next_run - datetime.now()).total_seconds()
+        if wait_seconds > 0:
+            click.echo(f"next sync at {next_run.isoformat(timespec='seconds')} (in {wait_seconds:.0f}s)")
+            time.sleep(wait_seconds)
+        run_once()
 
 
 # --------------------------------------------------------------------------

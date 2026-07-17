@@ -11,6 +11,7 @@ dependencies = [
     "requests>=2.31",
     "PyYAML>=6.0",
     "click>=8.1",
+    "croniter>=6.0",
 ]
 
 [project.optional-dependencies]
