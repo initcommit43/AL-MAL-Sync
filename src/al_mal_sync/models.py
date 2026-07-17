@@ -92,7 +92,10 @@ _ANILIST_TO_ANIME_STATUS = {
     "PAUSED": AnimeStatus.ON_HOLD,
     "DROPPED": AnimeStatus.DROPPED,
     "PLANNING": AnimeStatus.PLAN_TO_WATCH,
-    "REPEATING": AnimeStatus.WATCHING,  # TODO: handle rewatching distinctly
+    # The is_rewatching flag on Anime/Manga (set from this same "REPEATING"
+    # value in from_anilist_entry) is what actually distinguishes a rewatch
+    # from a first watch -- this mapping alone only recovers the base status.
+    "REPEATING": AnimeStatus.WATCHING,
 }
 
 _MANGA_STATUS_TO_ANILIST = {
@@ -279,6 +282,11 @@ class Anime:
     started_at: date | None = None
     finished_at: date | None = None
     is_favourite: bool = False
+    # AniList encodes this as a status value ("REPEATING"); MAL encodes it as
+    # a separate boolean alongside status="watching". Tracked here as its own
+    # field so it round-trips correctly in both directions instead of being
+    # silently collapsed into WATCHING.
+    is_rewatching: bool = False
     # Internal: True when this entry is used in the MAL->AniList reverse sync
     # direction. Changes which ID field get_target_id()/get_source_id() use.
     is_reverse: bool = False
@@ -295,11 +303,18 @@ class Anime:
     def get_title(self) -> str:
         return self.title_en or self.title_jp or self.title_romaji
 
+    def get_anilist_status_string(self) -> str:
+        """AniList's MediaListStatus value for this entry -- "REPEATING"
+        overrides the normal status mapping while rewatching, same as AniList
+        itself does."""
+        return "REPEATING" if self.is_rewatching else self.status.to_anilist_status()
+
     def get_string_diff_with_target(self, target: Target) -> str:
         if not isinstance(target, Anime):
             return "Diff{undefined}"
         return _build_diff_string(
             ("Status", self.status, target.status),
+            ("IsRewatching", self.is_rewatching, target.is_rewatching),
             ("Score", self.score, target.score),
             ("Progress", self.progress, target.progress),
             ("NumEpisodes", self.num_episodes, target.num_episodes),
@@ -314,6 +329,8 @@ class Anime:
         if not isinstance(target, Anime):
             return False
         if self.status != target.status:
+            return False
+        if self.is_rewatching != target.is_rewatching:
             return False
         if self.score != target.score:
             return False
@@ -412,6 +429,7 @@ class Anime:
             started_at=entry.started_at.to_date() if entry.started_at else None,
             finished_at=entry.completed_at.to_date() if entry.completed_at else None,
             is_favourite=media.is_favourite,
+            is_rewatching=entry.status == "REPEATING",
             is_reverse=reverse,
         )
 
@@ -435,6 +453,7 @@ class Anime:
             started_at=parse_mal_date(status.start_date),
             finished_at=parse_mal_date(status.finish_date),
             is_favourite=False,  # MAL API v2 doesn't expose favorites
+            is_rewatching=status.is_rewatching,
             is_reverse=reverse,
         )
 
@@ -492,6 +511,9 @@ class Manga:
     started_at: date | None = None
     finished_at: date | None = None
     is_favourite: bool = False
+    # See Anime.is_rewatching for why this is tracked as its own field rather
+    # than folded into `status`.
+    is_rereading: bool = False
     is_reverse: bool = False
 
     def get_target_id(self) -> int:
@@ -506,11 +528,16 @@ class Manga:
     def get_title(self) -> str:
         return self.title_en or self.title_jp or self.title_romaji
 
+    def get_anilist_status_string(self) -> str:
+        """See Anime.get_anilist_status_string."""
+        return "REPEATING" if self.is_rereading else self.status.to_anilist_status()
+
     def get_string_diff_with_target(self, target: Target) -> str:
         if not isinstance(target, Manga):
             return "Diff{undefined}"
         return _build_diff_string(
             ("Status", self.status, target.status),
+            ("IsRereading", self.is_rereading, target.is_rereading),
             ("Score", self.score, target.score),
             ("Progress", self.progress, target.progress),
             ("ProgressVolumes", self.progress_volumes, target.progress_volumes),
@@ -522,6 +549,8 @@ class Manga:
         if not isinstance(target, Manga):
             return False
         if self.status != target.status:
+            return False
+        if self.is_rereading != target.is_rereading:
             return False
         if self.score != target.score:
             return False
@@ -595,6 +624,7 @@ class Manga:
             started_at=entry.started_at.to_date() if entry.started_at else None,
             finished_at=entry.completed_at.to_date() if entry.completed_at else None,
             is_favourite=media.is_favourite,
+            is_rereading=entry.status == "REPEATING",
             is_reverse=reverse,
         )
 
@@ -615,6 +645,7 @@ class Manga:
             started_at=parse_mal_date(status.start_date),
             finished_at=parse_mal_date(status.finish_date),
             is_favourite=False,
+            is_rereading=status.is_rereading,
             is_reverse=reverse,
         )
 

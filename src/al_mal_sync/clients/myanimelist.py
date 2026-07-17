@@ -313,6 +313,7 @@ class MyAnimeListClient:
         num_watched_episodes: int | None = None,
         start_date: date | None = None,
         finish_date: date | None = None,
+        is_rewatching: bool | None = None,
     ) -> MALAnimeListStatus:
         fields: dict[str, str] = {}
         if status is not None:
@@ -325,6 +326,8 @@ class MyAnimeListClient:
             fields["start_date"] = _format_mal_date(start_date)
         if finish_date is not None:
             fields["finish_date"] = _format_mal_date(finish_date)
+        if is_rewatching is not None:
+            fields["is_rewatching"] = "true" if is_rewatching else "false"
         if not fields:
             raise ValueError("update_anime called with no fields to update")
 
@@ -341,6 +344,7 @@ class MyAnimeListClient:
         num_volumes_read: int | None = None,
         start_date: date | None = None,
         finish_date: date | None = None,
+        is_rereading: bool | None = None,
     ) -> MALMangaListStatus:
         fields: dict[str, str] = {}
         if status is not None:
@@ -355,6 +359,8 @@ class MyAnimeListClient:
             fields["start_date"] = _format_mal_date(start_date)
         if finish_date is not None:
             fields["finish_date"] = _format_mal_date(finish_date)
+        if is_rereading is not None:
+            fields["is_rereading"] = "true" if is_rereading else "false"
         if not fields:
             raise ValueError("update_manga called with no fields to update")
 

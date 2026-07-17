@@ -140,6 +140,51 @@ class TestUpdateAnime:
         with pytest.raises(ValueError, match="no fields"):
             client.update_anime(42)
 
+    def test_is_rewatching_encodes_as_lowercase_string(self) -> None:
+        response = _FakeResponse(200, {"status": "watching"})
+        client, session = _make_client([response])
+
+        client.update_anime(42, is_rewatching=True)
+
+        assert session.calls[0][2]["data"] == {"is_rewatching": "true"}
+
+    def test_is_rewatching_false_is_still_sent(self) -> None:
+        response = _FakeResponse(200, {"status": "watching"})
+        client, session = _make_client([response])
+
+        client.update_anime(42, is_rewatching=False)
+
+        assert session.calls[0][2]["data"] == {"is_rewatching": "false"}
+
+
+class TestUpdateManga:
+    def test_sends_expected_form_fields(self) -> None:
+        response = _FakeResponse(200, {"status": "reading", "score": 6})
+        client, session = _make_client([response])
+
+        client.update_manga(
+            7,
+            status="reading",
+            score=6,
+            num_chapters_read=10,
+            num_volumes_read=1,
+            is_rereading=True,
+        )
+
+        sent = session.calls[0][2]["data"]
+        assert sent == {
+            "status": "reading",
+            "score": "6",
+            "num_chapters_read": "10",
+            "num_volumes_read": "1",
+            "is_rereading": "true",
+        }
+
+    def test_no_fields_raises(self) -> None:
+        client, _ = _make_client([])
+        with pytest.raises(ValueError, match="no fields"):
+            client.update_manga(7)
+
 
 class TestErrorMapping:
     def test_404_raises_not_found(self) -> None:

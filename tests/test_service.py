@@ -163,6 +163,14 @@ class TestAniListAnimeService:
         media_id, status, progress, score, started_at, completed_at = client.update_anime_calls[0]
         assert completed_at is None
 
+    def test_update_sends_repeating_status_while_rewatching(self) -> None:
+        client = _FakeAniListClient()
+        service = AniListAnimeService(client, "POINT_10", reverse=True)
+        source = Anime(status=AnimeStatus.WATCHING, score=0, progress=3, is_rewatching=True)
+        service.update(source, 42)
+        _, status, *_ = client.update_anime_calls[0]
+        assert status == "REPEATING"
+
 
 class TestAniListMangaService:
     def test_update_includes_progress_volumes(self) -> None:
@@ -171,6 +179,14 @@ class TestAniListMangaService:
         source = Manga(status=MangaStatus.READING, score=5, progress=10, progress_volumes=2)
         service.update(source, 7)
         assert client.update_manga_calls == [(7, "CURRENT", 10, 2, 5.0, None, None)]
+
+    def test_update_sends_repeating_status_while_rereading(self) -> None:
+        client = _FakeAniListClient()
+        service = AniListMangaService(client, "POINT_10", reverse=True)
+        source = Manga(status=MangaStatus.READING, score=0, progress=10, is_rereading=True)
+        service.update(source, 7)
+        _, status, *_ = client.update_manga_calls[0]
+        assert status == "REPEATING"
 
 
 class TestMyAnimeListAnimeService:
@@ -207,6 +223,14 @@ class TestMyAnimeListAnimeService:
         _, fields = client.update_anime_calls[0]
         assert fields["finish_date"] is None
 
+    def test_update_passes_is_rewatching_through(self) -> None:
+        client = _FakeMyAnimeListClient()
+        service = MyAnimeListAnimeService(client)
+        source = Anime(status=AnimeStatus.WATCHING, score=0, progress=3, is_rewatching=True)
+        service.update(source, 5)
+        _, fields = client.update_anime_calls[0]
+        assert fields["is_rewatching"] is True
+
 
 class TestMyAnimeListMangaService:
     def test_update_includes_volumes(self) -> None:
@@ -218,3 +242,11 @@ class TestMyAnimeListMangaService:
         assert manga_id == 3
         assert fields["num_chapters_read"] == 10
         assert fields["num_volumes_read"] == 1
+
+    def test_update_passes_is_rereading_through(self) -> None:
+        client = _FakeMyAnimeListClient()
+        service = MyAnimeListMangaService(client)
+        source = Manga(status=MangaStatus.READING, score=0, progress=10, is_rereading=True)
+        service.update(source, 3)
+        _, fields = client.update_manga_calls[0]
+        assert fields["is_rereading"] is True

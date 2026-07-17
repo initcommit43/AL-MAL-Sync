@@ -56,7 +56,7 @@ class AniListAnimeService:
     def update(self, source: Anime, target_id: int) -> None:
         self.client.update_anime_entry(
             target_id,
-            source.status.to_anilist_status(),
+            source.get_anilist_status_string(),
             source.progress,
             denormalize_score_for_anilist(source.score, self.score_format),
             started_at=source.started_at,
@@ -98,7 +98,7 @@ class AniListMangaService:
     def update(self, source: Manga, target_id: int) -> None:
         self.client.update_manga_entry(
             target_id,
-            source.status.to_anilist_status(),
+            source.get_anilist_status_string(),
             source.progress,
             source.progress_volumes,
             denormalize_score_for_anilist(source.score, self.score_format),
@@ -137,6 +137,7 @@ class MyAnimeListAnimeService:
             num_watched_episodes=source.progress,
             start_date=source.started_at,
             finish_date=source.finished_at if source.status == AnimeStatus.COMPLETED else None,
+            is_rewatching=source.is_rewatching,
         )
 
 
@@ -170,4 +171,5 @@ class MyAnimeListMangaService:
             num_volumes_read=source.progress_volumes,
             start_date=source.started_at,
             finish_date=source.finished_at if source.status == MangaStatus.COMPLETED else None,
+            is_rereading=source.is_rereading,
         )

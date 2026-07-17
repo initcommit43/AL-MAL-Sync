@@ -156,6 +156,15 @@ class TestAnimeFromAniListEntry:
         assert anime.started_at == date(2024, 1, 1)
         assert anime.finished_at is None
         assert anime.is_favourite is True
+        assert anime.is_rewatching is False
+
+    def test_repeating_status_sets_is_rewatching_and_base_status_watching(self) -> None:
+        entry = AniListListEntry(
+            id=1, status="REPEATING", media=AniListMedia(id=100, episodes=12)
+        )
+        anime = Anime.from_anilist_entry(entry, POINT_100, reverse=False)
+        assert anime.is_rewatching is True
+        assert anime.status == AnimeStatus.WATCHING
 
 
 class TestAnimeFromMalEntry:
@@ -185,6 +194,34 @@ class TestAnimeFromMalEntry:
         anime = Anime.from_mal_entry(entry, reverse=False)
         assert anime.title_en == "Canonical"
 
+    def test_is_rewatching_flag_carries_over(self) -> None:
+        entry = MALUserAnimeEntry(
+            anime=MALAnime(id=5, title="Show", alternative_titles=MALTitles()),
+            status=MALAnimeListStatus(status="watching", is_rewatching=True),
+        )
+        anime = Anime.from_mal_entry(entry, reverse=False)
+        assert anime.is_rewatching is True
+
+
+class TestAnimeRewatching:
+    def test_get_anilist_status_string_is_repeating_while_rewatching(self) -> None:
+        anime = _anime(status=AnimeStatus.WATCHING, is_rewatching=True)
+        assert anime.get_anilist_status_string() == "REPEATING"
+
+    def test_get_anilist_status_string_falls_back_to_normal_mapping(self) -> None:
+        anime = _anime(status=AnimeStatus.WATCHING, is_rewatching=False)
+        assert anime.get_anilist_status_string() == "CURRENT"
+
+    def test_same_progress_with_target_considers_is_rewatching(self) -> None:
+        a = _anime(status=AnimeStatus.WATCHING, is_rewatching=True)
+        b = _anime(status=AnimeStatus.WATCHING, is_rewatching=False)
+        assert a.same_progress_with_target(b) is False
+
+    def test_diff_string_reports_is_rewatching_change(self) -> None:
+        a = _anime(is_rewatching=True)
+        b = _anime(is_rewatching=False)
+        assert "IsRewatching" in a.get_string_diff_with_target(b)
+
 
 class TestMangaSameType:
     def test_falls_back_to_chapters_and_volumes_when_titles_differ(self) -> None:
@@ -210,3 +247,34 @@ class TestMangaFromMalEntry:
         assert manga.progress == 50
         assert manga.progress_volumes == 5
         assert manga.status == MangaStatus.READING
+
+    def test_is_rereading_flag_carries_over(self) -> None:
+        entry = MALUserMangaEntry(
+            manga=MALManga(id=7, title="Berserk", alternative_titles=MALTitles()),
+            status=MALMangaListStatus(status="reading", is_rereading=True),
+        )
+        manga = Manga.from_mal_entry(entry, reverse=False)
+        assert manga.is_rereading is True
+
+
+class TestMangaFromAniListEntry:
+    def test_repeating_status_sets_is_rereading_and_base_status_reading(self) -> None:
+        entry = AniListListEntry(id=1, status="REPEATING", media=AniListMedia(id=100))
+        manga = Manga.from_anilist_entry(entry, POINT_100, reverse=False)
+        assert manga.is_rereading is True
+        assert manga.status == MangaStatus.READING
+
+
+class TestMangaRereading:
+    def test_get_anilist_status_string_is_repeating_while_rereading(self) -> None:
+        manga = Manga(title_en="Berserk", status=MangaStatus.READING, is_rereading=True)
+        assert manga.get_anilist_status_string() == "REPEATING"
+
+    def test_get_anilist_status_string_falls_back_to_normal_mapping(self) -> None:
+        manga = Manga(title_en="Berserk", status=MangaStatus.READING, is_rereading=False)
+        assert manga.get_anilist_status_string() == "CURRENT"
+
+    def test_same_progress_with_target_considers_is_rereading(self) -> None:
+        a = Manga(title_en="Berserk", status=MangaStatus.READING, is_rereading=True)
+        b = Manga(title_en="Berserk", status=MangaStatus.READING, is_rereading=False)
+        assert a.same_progress_with_target(b) is False
