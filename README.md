@@ -108,3 +108,7 @@ pytest
   [Hato](https://hato.malupdaterosx.moe), [Jikan](https://jikan.moe), and
   [ARM](https://arm.haglund.dev) — the id-mapping data sources that make
   automatic AniList<->MAL matching possible.
+
+## License
+
+[MIT](LICENSE)

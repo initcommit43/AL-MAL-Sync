@@ -4,7 +4,9 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-COPY pyproject.toml ./
+# README.md/LICENSE are required at build time now that pyproject.toml
+# references them (project.readme, project.license-files).
+COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 RUN pip install --no-cache-dir --prefix=/install .

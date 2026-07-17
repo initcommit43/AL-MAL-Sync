@@ -6,13 +6,29 @@ build-backend = "hatchling.build"
 name = "al-mal-sync"
 version = "0.1.0"
 description = "Bidirectional sync tool between MyAnimeList and AniList"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "initcommit43" }]
 requires-python = ">=3.11"
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+]
 dependencies = [
     "requests>=2.31",
     "PyYAML>=6.0",
     "click>=8.1",
     "croniter>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/initcommit43/AL-MAL-Sync"
+Repository = "https://github.com/initcommit43/AL-MAL-Sync"
 
 [project.optional-dependencies]
 dev = [
