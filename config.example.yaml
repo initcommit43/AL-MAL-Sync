@@ -1,16 +1,60 @@
+# Copy to config.yaml and fill in your AniList/MyAnimeList app credentials.
+# Every value here can also be set via environment variable instead (see
+# README.md's Configuration section) - env vars always win over config.yaml.
+#
+# Sync direction and dry-run are CLI flags (`--reverse-direction`,
+# `--dry-run`), not config keys - they change per invocation, so they don't
+# belong in a persistent file.
+
 oauth:
-  port: 18080
+  port: "18080"
   redirect_uri: "http://localhost:18080/callback"
+
 anilist:
   client_id: ""
   client_secret: ""
   username: ""
+
 myanimelist:
   client_id: ""
   client_secret: ""
   username: ""
+
 token_file_path: ""       # default: ~/.config/al-mal-sync/token.json
 mappings_file_path: ""    # default: ~/.config/al-mal-sync/mappings.yaml
-sync:
-  direction: "anilist_to_mal"  # or "mal_to_anilist"
-  dry_run: false
+http_timeout: "30s"
+
+# Exactly one of interval/schedule, only used by `al-mal-sync watch`.
+watch:
+  interval: ""            # e.g. "6h"; range 1h-168h
+  schedule: ""             # 5-field cron expression, e.g. "0 */6 * * *"
+
+# Local anime-offline-database id mapping (anime only). Enabled by default;
+# downloads/caches https://github.com/manami-project/anime-offline-database.
+offline_database:
+  enabled: true
+  cache_dir: ""            # default: ~/.config/al-mal-sync/aod-cache
+  auto_update: true
+
+# Hato API id mapping (anime + manga). Enabled by default.
+hato_api:
+  enabled: true
+  base_url: "https://hato.malupdaterosx.moe"
+  cache_dir: ""            # default: ~/.config/al-mal-sync/hato-cache
+  cache_max_age: "720h"
+
+# ARM API id mapping fallback (anime only). Opt-in.
+arm_api:
+  enabled: false
+  base_url: "https://arm.haglund.dev"
+
+# Jikan API id mapping (manga only) + MAL favorites reads. Opt-in; auto-enabled
+# by `--favorites`/favorites.enabled below.
+jikan_api:
+  enabled: false
+  cache_dir: ""            # default: ~/.config/al-mal-sync/jikan-cache
+  cache_max_age: "168h"
+
+# See docs/favorites-sync.md for the asymmetric MAL<->AniList behavior.
+favorites:
+  enabled: false
