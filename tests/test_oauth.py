@@ -304,11 +304,10 @@ class TestLoginFlow:
 
 
 class TestCreateAniListOAuth:
-    """AniList's OAuth2 implementation is plain authorization-code grant --
-    no PKCE, no "offline access" param (see docs.anilist.co/guide/auth).
-    Sending either makes AniList's authorize endpoint reject the request
-    outright with "Invalid Client", so these regression-test the exact
-    query AniList receives, not just that OAuth's generic PKCE support works."""
+    """Matches the reference Go tool's newAnilistOAuth (anilist.go): PKCE
+    S256 plus access_type=offline. Confirmed against the reference source,
+    not just docs.anilist.co (which doesn't mention PKCE at all but doesn't
+    mean it's rejected -- the reference tool sends it and works)."""
 
     def _config(self, tmp_path: Path) -> Config:
         config = Config()
@@ -317,21 +316,16 @@ class TestCreateAniListOAuth:
         config.token_file_path = str(tmp_path / "token.json")
         return config
 
-    def test_auth_url_has_no_pkce_params(self, tmp_path: Path) -> None:
+    def test_auth_url_uses_s256_pkce(self, tmp_path: Path) -> None:
         oauth = create_anilist_oauth(self._config(tmp_path))
         query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
-        assert "code_challenge" not in query
-        assert "code_challenge_method" not in query
+        assert query["code_challenge_method"] == ["S256"]
+        assert "code_challenge" in query
 
-    def test_auth_url_has_no_access_type_param(self, tmp_path: Path) -> None:
+    def test_auth_url_requests_offline_access(self, tmp_path: Path) -> None:
         oauth = create_anilist_oauth(self._config(tmp_path))
         query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
-        assert "access_type" not in query
-
-    def test_auth_url_has_only_documented_params(self, tmp_path: Path) -> None:
-        oauth = create_anilist_oauth(self._config(tmp_path))
-        query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
-        assert set(query) == {"response_type", "client_id", "redirect_uri", "state"}
+        assert query["access_type"] == ["offline"]
 
 
 class TestCreateMyAnimeListOAuth:

@@ -475,13 +475,11 @@ class OAuth:
 
 
 def create_anilist_oauth(config: Config) -> OAuth:
-    # AniList's OAuth2 implementation is plain authorization-code grant: just
-    # client_id/client_secret/redirect_uri/code, no PKCE and no "offline
-    # access" concept (see docs.anilist.co/guide/auth). Sending unsupported
-    # params like code_challenge/access_type makes AniList's authorize
-    # endpoint reject the request outright with "Invalid Client" rather than
-    # ignoring them. AniList also has no refresh-token flow -- access tokens
-    # are valid for 1 year and expiry requires a full re-login, not a refresh.
+    # Matches the reference Go tool's newAnilistOAuth (anilist.go): PKCE S256
+    # plus access_type=offline. AniList's public docs don't mention PKCE, but
+    # the reference tool sends it and works, so it's accepted (just not
+    # documented) -- these params are NOT what caused an "Invalid Client"
+    # error seen in practice; don't remove them again without new evidence.
     site = config.anilist
     return OAuth(
         site_name="anilist",
@@ -491,6 +489,8 @@ def create_anilist_oauth(config: Config) -> OAuth:
         token_url=site.token_url,
         redirect_uri=config.oauth.redirect_uri,
         token_file_path=config.resolved_token_file_path,
+        pkce_method="S256",
+        extra_auth_params={"access_type": "offline"},
         http_timeout=config.get_http_timeout().total_seconds(),
     )
 
