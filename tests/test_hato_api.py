@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from al_mal_sync.http_retry import HTTPRetryExhaustedError
 from al_mal_sync.mapping.hato_api import HatoApiClient, HatoCache, HatoMappingData
 
 
@@ -120,3 +121,20 @@ class TestHatoApiClientLookup:
 
         assert client.get_mal_id(1, "manga") == 7
         assert client.cache is None
+
+    def test_request_exception_is_non_fatal(self) -> None:
+        """A flaky Hato (timeout, connection error, or the retry wrapper's
+        own HTTPRetryExhaustedError once max_retries is exhausted) must not
+        crash the whole sync run -- Hato is an optional fallback strategy,
+        not a hard dependency. Regression test for a real failure hit during
+        a live sync run against the actual Hato API."""
+
+        class _RaisingSession:
+            def get(self, url: str, **kwargs: Any) -> Any:
+                raise HTTPRetryExhaustedError("max retries exhausted")
+
+        client = HatoApiClient(cache_dir=None)
+        client.session = _RaisingSession()  # type: ignore[assignment]
+
+        assert client.get_anilist_id(1, "anime") is None
+        assert client.get_mal_id(1, "anime") is None

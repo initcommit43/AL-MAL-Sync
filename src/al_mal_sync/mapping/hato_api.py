@@ -174,10 +174,18 @@ class HatoApiClient:
         return value if value and value > 0 else None
 
     def _request(self, url: str) -> HatoMappingData | None:
-        # Hato rejects requests without a browser-like User-Agent header.
-        response = self.session.get(
-            url, headers={"User-Agent": "Mozilla/5.0"}, timeout=self.http_timeout
-        )
+        # Errors are non-fatal here: Hato is an optional best-effort fallback
+        # in the id-mapping strategy chain, not a hard dependency. A timeout,
+        # connection error, or exhausted retry must not crash the whole sync
+        # run, so treat any request failure the same as "no mapping found".
+        try:
+            # Hato rejects requests without a browser-like User-Agent header.
+            response = self.session.get(
+                url, headers={"User-Agent": "Mozilla/5.0"}, timeout=self.http_timeout
+            )
+        except Exception as exc:  # noqa: BLE001 (deliberately non-fatal, see above)
+            logger.debug("[HATO API] request error for %s: %s", url, exc)
+            return None
         if response.status_code == 404:
             return None
         if not response.ok:

@@ -39,11 +39,19 @@ class ArmApiClient:
 
     def _request(self, *, source: str, id_: int, include: str) -> dict[str, Any] | None:
         url = f"{self.base_url}/api/v2/ids"
-        response = self.session.get(
-            url,
-            params={"source": source, "id": id_, "include": include},
-            timeout=self.http_timeout,
-        )
+        # Errors are non-fatal here: ARM is an optional best-effort fallback
+        # in the id-mapping strategy chain, not a hard dependency. A timeout,
+        # connection error, or exhausted retry must not crash the whole sync
+        # run, so treat any request failure the same as "no mapping found".
+        try:
+            response = self.session.get(
+                url,
+                params={"source": source, "id": id_, "include": include},
+                timeout=self.http_timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 (deliberately non-fatal, see above)
+            logger.debug("[ARM API] request error for %s: %s", url, exc)
+            return None
         if response.status_code == 404:
             return None
         if not response.ok:

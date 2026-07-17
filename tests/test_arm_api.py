@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from al_mal_sync.http_retry import HTTPRetryExhaustedError
 from al_mal_sync.mapping.arm_api import ArmApiClient
 
 
@@ -60,3 +61,22 @@ class TestGetMalId:
         client, session = _make_client([_FakeResponse(200, {"myanimelist": 42})])
         assert client.get_mal_id(999) == 42
         assert session.calls[0]["params"]["source"] == "anilist"
+
+
+class TestRequestExceptionIsNonFatal:
+    """A flaky ARM API (timeout, connection error, or the retry wrapper's own
+    HTTPRetryExhaustedError once max_retries is exhausted) must not crash the
+    whole sync run -- ARM is an optional fallback strategy, not a hard
+    dependency. Regression test for the same class of bug found in Hato
+    during a live sync run."""
+
+    def test_get_anilist_id_swallows_exception(self) -> None:
+        class _RaisingSession:
+            def get(self, url: str, **kwargs: Any) -> Any:
+                raise HTTPRetryExhaustedError("max retries exhausted")
+
+        client = ArmApiClient()
+        client.session = _RaisingSession()  # type: ignore[assignment]
+
+        assert client.get_anilist_id(1) is None
+        assert client.get_mal_id(1) is None
