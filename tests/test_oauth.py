@@ -11,11 +11,14 @@ from typing import Any
 import pytest
 import requests
 
+from al_mal_sync.config import Config
 from al_mal_sync.oauth import (
     OAuth,
     OAuthError,
     Token,
     TokenStore,
+    create_anilist_oauth,
+    create_myanimelist_oauth,
 )
 
 ANILIST_AUTH_URL = "https://anilist.co/api/v2/oauth/authorize"
@@ -298,3 +301,48 @@ class TestLoginFlow:
         assert oauth.needs_init is False
         assert oauth.token is not None
         assert oauth.token.access_token == "from-callback"
+
+
+class TestCreateAniListOAuth:
+    """AniList's OAuth2 implementation is plain authorization-code grant --
+    no PKCE, no "offline access" param (see docs.anilist.co/guide/auth).
+    Sending either makes AniList's authorize endpoint reject the request
+    outright with "Invalid Client", so these regression-test the exact
+    query AniList receives, not just that OAuth's generic PKCE support works."""
+
+    def _config(self, tmp_path: Path) -> Config:
+        config = Config()
+        config.anilist.client_id = "anilist-client-id"
+        config.anilist.client_secret = "anilist-client-secret"
+        config.token_file_path = str(tmp_path / "token.json")
+        return config
+
+    def test_auth_url_has_no_pkce_params(self, tmp_path: Path) -> None:
+        oauth = create_anilist_oauth(self._config(tmp_path))
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
+        assert "code_challenge" not in query
+        assert "code_challenge_method" not in query
+
+    def test_auth_url_has_no_access_type_param(self, tmp_path: Path) -> None:
+        oauth = create_anilist_oauth(self._config(tmp_path))
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
+        assert "access_type" not in query
+
+    def test_auth_url_has_only_documented_params(self, tmp_path: Path) -> None:
+        oauth = create_anilist_oauth(self._config(tmp_path))
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
+        assert set(query) == {"response_type", "client_id", "redirect_uri", "state"}
+
+
+class TestCreateMyAnimeListOAuth:
+    def _config(self, tmp_path: Path) -> Config:
+        config = Config()
+        config.myanimelist.client_id = "mal-client-id"
+        config.token_file_path = str(tmp_path / "token.json")
+        return config
+
+    def test_auth_url_uses_plain_pkce(self, tmp_path: Path) -> None:
+        oauth = create_myanimelist_oauth(self._config(tmp_path))
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(oauth.get_auth_url()).query)
+        assert query["code_challenge_method"] == ["plain"]
+        assert query["code_challenge"] == [oauth._verifier]
