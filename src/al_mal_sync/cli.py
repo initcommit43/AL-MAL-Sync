@@ -11,6 +11,7 @@ place since it already owns the run's flags/config.
 
 from __future__ import annotations
 
+import sys
 import time
 from datetime import datetime
 from typing import Any, Callable
@@ -123,6 +124,11 @@ def _sync_options(f: Any) -> Any:
 @click.pass_context
 def main(ctx: click.Context, config_path: str | None) -> None:
     """al-mal-sync: bidirectional sync between AniList and MyAnimeList."""
+    # Titles routinely contain Japanese/CJK characters; a non-UTF-8 console
+    # (e.g. Windows cp1252) would otherwise crash on the final report print.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config_path
 
