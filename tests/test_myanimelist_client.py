@@ -78,14 +78,14 @@ class TestGetUserAnimeList:
         page1 = _FakeResponse(
             200,
             {
-                "data": [{"node": {"id": 1, "title": "A"}, "list_status": {"status": "watching"}}],
+                "data": [{"node": {"id": 1, "title": "A", "my_list_status": {"status": "watching"}}}],
                 "paging": {"next": "https://x/?offset=100"},
             },
         )
         page2 = _FakeResponse(
             200,
             {
-                "data": [{"node": {"id": 2, "title": "B"}, "list_status": {"status": "completed"}}],
+                "data": [{"node": {"id": 2, "title": "B", "my_list_status": {"status": "completed"}}}],
                 "paging": {},
             },
         )
@@ -105,8 +105,8 @@ class TestGetUserAnimeList:
                     "title": "Show",
                     "num_episodes": 12,
                     "start_season": {"year": 2020, "season": "fall"},
+                    "my_list_status": {"status": "watching", "num_episodes_watched": 3},
                 },
-                "list_status": {"status": "watching", "num_episodes_watched": 3},
             }
         )
         assert entry.anime.start_season_year == 2020

@@ -113,9 +113,10 @@ class MALUserAnimeEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MALUserAnimeEntry:
+        node = data["node"]
         return cls(
-            anime=MALAnime.from_dict(data["node"]),
-            status=MALAnimeListStatus.from_dict(data.get("list_status")),
+            anime=MALAnime.from_dict(node),
+            status=MALAnimeListStatus.from_dict(node.get("my_list_status")),
         )
 
 
@@ -171,9 +172,10 @@ class MALUserMangaEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MALUserMangaEntry:
+        node = data["node"]
         return cls(
-            manga=MALManga.from_dict(data["node"]),
-            status=MALMangaListStatus.from_dict(data.get("list_status")),
+            manga=MALManga.from_dict(node),
+            status=MALMangaListStatus.from_dict(node.get("my_list_status")),
         )
 
 
