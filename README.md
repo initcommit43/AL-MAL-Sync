@@ -26,6 +26,8 @@ favorites asymmetry), not translated line-for-line.
 - One-shot sync, or `watch` mode on an interval or cron schedule.
 - Per-run statistics table plus a report of warnings, duplicate-match
   conflicts, and favorites mismatches.
+- A desktop GUI (PySide6) for everything above, if you'd rather click
+  through tabs than remember flags — see [GUI](#gui) below.
 
 ## Installation
 
@@ -78,6 +80,25 @@ Run `al-mal-sync <command> --help` for the full list.
 See [docs/date-sync.md](docs/date-sync.md) for the exact date-comparison
 rules applied during sync.
 
+## GUI
+
+A desktop app covering the same commands above — Settings (edit
+`config.yaml`), Login/Logout with live auth status, Sync (with a progress
+bar and live log output), Watch (a non-blocking interval/cron loop, only
+while the window is open), Unmapped (resolve entries interactively instead
+of at a terminal prompt), Mappings (edit `mappings.yaml` in a table), and
+Logs.
+
+```sh
+pip install -e ".[gui]"
+al-mal-sync-gui
+```
+
+It shares the same `config.yaml`/`mappings.yaml`/token store as the CLI —
+either one works against the same setup. For unattended background
+scheduling, keep using `al-mal-sync watch` (CLI/Docker); the GUI's Watch
+tab only runs while its window is open.
+
 ## Docker
 
 ```sh
@@ -99,6 +120,9 @@ pip install -e ".[dev]"
 ruff check .
 pytest
 ```
+
+GUI tests (`tests/test_gui_*.py`) skip themselves gracefully if PySide6
+isn't installed; run `pip install -e ".[dev,gui]"` instead to include them.
 
 ## Credits
 
