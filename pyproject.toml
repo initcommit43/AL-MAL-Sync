@@ -13,6 +13,7 @@ authors = [{ name = "initcommit43" }]
 requires-python = ">=3.11"
 classifiers = [
     "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
     "Intended Audience :: End Users/Desktop",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -36,9 +37,13 @@ dev = [
     "pytest-mock>=3.14",
     "ruff>=0.6",
 ]
+gui = [
+    "PySide6>=6.7",
+]
 
 [project.scripts]
 al-mal-sync = "al_mal_sync.cli:main"
+al-mal-sync-gui = "al_mal_sync.gui.app:main"
 
 [tool.ruff]
 line-length = 100
