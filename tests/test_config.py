@@ -11,8 +11,10 @@ from al_mal_sync.config import (
     Config,
     ConfigError,
     WatchConfig,
+    default_config_path,
     load_config,
     parse_duration,
+    save_config,
 )
 
 REQUIRED_ENV = {
@@ -195,6 +197,60 @@ class TestLoadConfigFromFile:
         config_path.write_text("- just\n- a\n- list\n", encoding="utf-8")
         with pytest.raises(ConfigError, match="must contain a YAML mapping"):
             load_config(config_path)
+
+
+_ALL_CONFIG_ENV_KEYS = [
+    "OAUTH_PORT", "PORT", "OAUTH_REDIRECT_URI",
+    "ANILIST_CLIENT_ID", "ANILIST_CLIENT_SECRET", "CLIENT_SECRET_ANILIST", "ANILIST_USERNAME",
+    "MAL_CLIENT_ID", "MAL_CLIENT_SECRET", "CLIENT_SECRET_MYANIMELIST", "MAL_USERNAME",
+    "TOKEN_FILE_PATH", "MAPPINGS_FILE_PATH", "WATCH_INTERVAL", "WATCH_SCHEDULE", "HTTP_TIMEOUT",
+    "OFFLINE_DATABASE_ENABLED", "OFFLINE_DATABASE_CACHE_DIR", "OFFLINE_DATABASE_AUTO_UPDATE",
+    "ARM_API_ENABLED", "ARM_API_URL",
+    "HATO_API_ENABLED", "HATO_API_URL", "HATO_API_CACHE_DIR", "HATO_API_CACHE_MAX_AGE",
+    "JIKAN_API_ENABLED", "JIKAN_API_CACHE_DIR", "JIKAN_API_CACHE_MAX_AGE",
+    "FAVORITES_SYNC_ENABLED",
+]
+
+
+class TestSaveConfig:
+    def _clear_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for key in _ALL_CONFIG_ENV_KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+    def test_round_trips_through_load_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._clear_env(monkeypatch)
+        cfg = Config()
+        cfg.anilist.client_id = "ani_id"
+        cfg.anilist.client_secret = "ani_secret"
+        cfg.anilist.username = "ani_user"
+        cfg.myanimelist.client_id = "mal_id"
+        cfg.myanimelist.client_secret = "mal_secret"
+        cfg.myanimelist.username = "mal_user"
+        cfg.watch.interval = "6h"
+        cfg.arm_api.enabled = True
+        cfg.jikan_api.enabled = True
+        cfg.favorites.enabled = True
+
+        config_path = tmp_path / "config.yaml"
+        save_config(cfg, config_path)
+        loaded = load_config(config_path)
+
+        assert loaded == cfg
+
+    def test_creates_parent_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._clear_env(monkeypatch)
+        config_path = tmp_path / "nested" / "dir" / "config.yaml"
+        save_config(Config(), config_path)
+        assert config_path.exists()
+
+
+class TestDefaultConfigPath:
+    def test_ends_with_config_yaml(self) -> None:
+        assert default_config_path().endswith("config.yaml")
 
 
 class TestConfigResolvedPaths:

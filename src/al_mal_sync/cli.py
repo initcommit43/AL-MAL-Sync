@@ -1,12 +1,10 @@
 """CLI commands: login, logout, status, sync, watch, unmapped.
 
 Ported from the reference Go tool's cmd_*.go files (one Click command per Go
-command, same flag names for muscle-memory parity). This module also owns the
-sync orchestration glue: wiring the OAuth-backed API clients, the id-mapping
-strategy chain, and sync/updater.py's Updater together for a given
-(media kind, direction) pair -- none of the lower-level modules know about
-each other, so something has to assemble them, and the CLI is the natural
-place since it already owns the run's flags/config.
+command, same flag names for muscle-memory parity). Sync orchestration itself
+lives in sync/runner.py (shared with any other frontend); this module wires
+click's flags/config into that, prints results, and turns typed exceptions
+into ClickExceptions.
 """
 
 from __future__ import annotations
@@ -19,45 +17,18 @@ from typing import Any, Callable
 import click
 from croniter import CroniterError, croniter
 
-from .clients.anilist import AniListAPIError, AniListClient
-from .clients.myanimelist import MyAnimeListAPIError, MyAnimeListClient
-from .config import Config, ConfigError, load_config, parse_duration
+from .clients.anilist import AniListAPIError
+from .clients.myanimelist import MyAnimeListAPIError
+from .config import Config, ConfigError, load_config
 from .logging_config import configure_logging
-from .mapping.arm_api import ArmApiClient
-from .mapping.hato_api import HatoApiClient
-from .mapping.jikan_api import JikanApiError, JikanClient
-from .mapping.manual_mappings import MappingsConfig, load_mappings
-from .mapping.offline_database import OfflineDatabase, OfflineDatabaseError, load_offline_database
-from .mapping.strategies import (
-    APISearchStrategy,
-    ARMAPIStrategy,
-    HatoAPIStrategy,
-    IDStrategy,
-    JikanAPIStrategy,
-    MALIDStrategy,
-    ManualMappingStrategy,
-    OfflineDatabaseStrategy,
-    StrategyChain,
-    TitleStrategy,
-)
-from .models import Anime, Manga
+from .mapping.manual_mappings import load_mappings
 from .oauth import OAuth, OAuthError, create_anilist_oauth, create_myanimelist_oauth
-from .sync.favorites import (
-    FavoritesOutcome,
-    build_id_mapping,
-    check_anilist_favorites_against_mal,
-    sync_mal_favorites_to_anilist,
-)
+from .sync.favorites import FavoritesOutcome
 from .sync.report import build_report, format_report
-from .sync.service import (
-    AniListAnimeService,
-    AniListMangaService,
-    MyAnimeListAnimeService,
-    MyAnimeListMangaService,
-)
+from .sync.runner import run_sync
 from .sync.statistics import SyncStatistics, format_statistics_table
-from .sync.updater import SyncOutcome, Updater
-from .unmapped import UnmappedRecord, load_unmapped_state, save_unmapped_state
+from .sync.updater import SyncOutcome
+from .unmapped import load_unmapped_state, save_unmapped_state
 
 _SERVICE_CHOICES = ("anilist", "myanimelist", "all")
 
@@ -187,40 +158,6 @@ def status(ctx: click.Context) -> None:
 # --------------------------------------------------------------------------
 
 
-def _build_strategy_chain(
-    kind: str,
-    *,
-    reverse: bool,
-    mappings: MappingsConfig,
-    offline_database: OfflineDatabase | None,
-    hato_client: HatoApiClient | None,
-    arm_client: ArmApiClient | None,
-    jikan_client: JikanClient | None,
-    target_service: Any,
-) -> StrategyChain:
-    """Assemble the strategy chain for one media kind/direction, in the fixed
-    priority order from PLAN.md Phase 5. `target_service` doubles as the
-    MediaServiceWithMalId for MALIDStrategy (reverse only, since only
-    AniList's client implements get_by_mal_id) and the MediaService for the
-    last-resort APISearchStrategy."""
-    strategies: list[Any] = [
-        ManualMappingStrategy(mappings, reverse=reverse),
-        IDStrategy(),
-    ]
-    if kind == "anime":
-        strategies.append(OfflineDatabaseStrategy(offline_database))
-    strategies.append(HatoAPIStrategy(hato_client))
-    if kind == "anime":
-        strategies.append(ARMAPIStrategy(arm_client))
-    strategies.append(TitleStrategy())
-    if kind == "manga":
-        strategies.append(JikanAPIStrategy(jikan_client))
-    if reverse:
-        strategies.append(MALIDStrategy(target_service))
-    strategies.append(APISearchStrategy(target_service))
-    return StrategyChain(strategies)
-
-
 def _announce_kind(kind: str, reverse: bool) -> None:
     direction = "MyAnimeList -> AniList" if reverse else "AniList -> MyAnimeList"
     click.echo(f"Syncing {kind} ({direction})...")
@@ -231,11 +168,7 @@ def _print_summary(outcomes: dict[str, SyncOutcome], favorites_outcomes: dict[st
     click.echo("\n" + format_report(build_report(outcomes, favorites_outcomes)))
 
 
-def _invert(mapping: dict[int, int]) -> dict[int, int]:
-    return {v: k for k, v in mapping.items()}
-
-
-def _run_sync(
+def _run_sync_command(
     config: Config,
     *,
     force: bool,
@@ -250,226 +183,21 @@ def _run_sync(
     jikan_api: bool,
     favorites: bool,
 ) -> None:
-    media_kinds = ["anime", "manga"] if all_media else (["manga"] if manga else ["anime"])
-    if favorites:
-        jikan_api = True
-
-    mappings = load_mappings(config.resolved_mappings_file_path)
-
+    """CLI wrapper around sync.runner.run_sync(): announces each kind and
+    prints the final summary via click, and turns the typed exceptions
+    run_sync() raises into a clean ClickException."""
     try:
-        anilist_oauth = create_anilist_oauth(config)
-        mal_oauth = create_myanimelist_oauth(config)
-    except OAuthError as exc:
+        outcomes, favorites_outcomes = run_sync(
+            config,
+            force=force, dry_run=dry_run, manga=manga, all_media=all_media, reverse=reverse,
+            offline_db=offline_db, offline_db_force_refresh=offline_db_force_refresh,
+            arm_api=arm_api, arm_api_url=arm_api_url, jikan_api=jikan_api, favorites=favorites,
+            on_kind_start=_announce_kind,
+        )
+    except (OAuthError, AniListAPIError, MyAnimeListAPIError) as exc:
         raise click.ClickException(str(exc)) from exc
 
-    http_timeout = config.get_http_timeout().total_seconds()
-    anilist_client = AniListClient(anilist_oauth, config.anilist.username, http_timeout=http_timeout)
-    mal_client = MyAnimeListClient(mal_oauth, config.myanimelist.username, http_timeout=http_timeout)
-
-    try:
-        score_format = anilist_client.get_user_score_format()
-    except AniListAPIError as exc:
-        raise click.ClickException(f"failed to fetch AniList score format: {exc}") from exc
-
-    offline_database: OfflineDatabase | None = None
-    if "anime" in media_kinds and (config.offline_database.enabled or offline_db):
-        try:
-            offline_database = load_offline_database(
-                config.resolved_offline_db_cache_dir,
-                auto_update=config.offline_database.auto_update,
-                force_refresh=offline_db_force_refresh,
-                http_timeout=http_timeout,
-            )
-        except OfflineDatabaseError as exc:
-            click.secho(f"warning: offline database unavailable: {exc}", fg="yellow", err=True)
-
-    hato_client: HatoApiClient | None = None
-    if config.hato_api.enabled:
-        hato_client = HatoApiClient(
-            config.hato_api.base_url,
-            cache_dir=config.resolved_hato_cache_dir,
-            cache_max_age_seconds=parse_duration(config.hato_api.cache_max_age).total_seconds(),
-            http_timeout=http_timeout,
-        )
-
-    arm_client: ArmApiClient | None = None
-    if "anime" in media_kinds and (config.arm_api.enabled or arm_api):
-        arm_client = ArmApiClient(arm_api_url or config.arm_api.base_url, http_timeout=http_timeout)
-
-    jikan_client: JikanClient | None = None
-    if config.jikan_api.enabled or jikan_api:
-        jikan_client = JikanClient(
-            config.resolved_jikan_cache_dir,
-            cache_max_age_seconds=parse_duration(config.jikan_api.cache_max_age).total_seconds(),
-            http_timeout=http_timeout,
-        )
-
-    try:
-        media_state: dict[str, tuple[SyncOutcome, list[Any]]] = {}
-        for kind in media_kinds:
-            _announce_kind(kind, reverse)
-            outcome, anilist_entries, _target_service = _sync_one_kind(
-                kind,
-                reverse=reverse,
-                score_format=score_format,
-                anilist_client=anilist_client,
-                mal_client=mal_client,
-                mappings=mappings,
-                offline_database=offline_database,
-                hato_client=hato_client,
-                arm_client=arm_client,
-                jikan_client=jikan_client,
-                force=force,
-                dry_run=dry_run,
-            )
-            media_state[kind] = (outcome, anilist_entries)
-            _persist_unmapped(config, kind, reverse, outcome)
-
-        favorites_outcomes: dict[str, FavoritesOutcome] = {}
-        if favorites:
-            favorites_outcomes = _sync_favorites(
-                config, media_state, reverse=reverse, jikan_client=jikan_client, anilist_client=anilist_client
-            )
-
-        outcomes = {kind: outcome for kind, (outcome, _entries) in media_state.items()}
-        _print_summary(outcomes, favorites_outcomes)
-    except (AniListAPIError, MyAnimeListAPIError) as exc:
-        raise click.ClickException(str(exc)) from exc
-    finally:
-        if hato_client is not None:
-            hato_client.save_cache()
-        if jikan_client is not None:
-            jikan_client.save_cache()
-
-
-def _sync_one_kind(
-    kind: str,
-    *,
-    reverse: bool,
-    score_format: str,
-    anilist_client: AniListClient,
-    mal_client: MyAnimeListClient,
-    mappings: MappingsConfig,
-    offline_database: OfflineDatabase | None,
-    hato_client: HatoApiClient | None,
-    arm_client: ArmApiClient | None,
-    jikan_client: JikanClient | None,
-    force: bool,
-    dry_run: bool,
-) -> tuple[SyncOutcome, list[Any], Any]:
-    """Fetch both lists, build the source/target split for one (kind,
-    direction) pair, and run the Updater. Returns the outcome, the list of
-    AniList-side entries (needed by favorites sync regardless of direction,
-    since is_favourite only exists on AniList), and the target service."""
-    model = Anime if kind == "anime" else Manga
-
-    if reverse:
-        anilist_entries = [
-            model.from_anilist_entry(e, score_format, reverse=True)
-            for e in (anilist_client.get_user_anime_list() if kind == "anime" else anilist_client.get_user_manga_list())
-        ]
-        sources = [
-            model.from_mal_entry(e, reverse=True)
-            for e in (mal_client.get_user_anime_list() if kind == "anime" else mal_client.get_user_manga_list())
-        ]
-        target_service = (
-            AniListAnimeService(anilist_client, score_format, reverse=True)
-            if kind == "anime"
-            else AniListMangaService(anilist_client, score_format, reverse=True)
-        )
-        existing = {t.get_target_id(): t for t in anilist_entries}
-    else:
-        anilist_entries = [
-            model.from_anilist_entry(e, score_format, reverse=False)
-            for e in (anilist_client.get_user_anime_list() if kind == "anime" else anilist_client.get_user_manga_list())
-        ]
-        sources = anilist_entries
-        target_service = (
-            MyAnimeListAnimeService(mal_client, reverse=False)
-            if kind == "anime"
-            else MyAnimeListMangaService(mal_client, reverse=False)
-        )
-        existing = {
-            t.get_target_id(): t
-            for t in (
-                model.from_mal_entry(e, reverse=False)
-                for e in (mal_client.get_user_anime_list() if kind == "anime" else mal_client.get_user_manga_list())
-            )
-        }
-
-    chain = _build_strategy_chain(
-        kind,
-        reverse=reverse,
-        mappings=mappings,
-        offline_database=offline_database,
-        hato_client=hato_client,
-        arm_client=arm_client,
-        jikan_client=jikan_client,
-        target_service=target_service,
-    )
-    updater = Updater(chain, target_service, mappings=mappings, force=force, dry_run=dry_run)
-    outcome = updater.run(sources, existing)
-    return outcome, anilist_entries, target_service
-
-
-def _persist_unmapped(config: Config, kind: str, reverse: bool, outcome: SyncOutcome) -> None:
-    direction = "reverse" if reverse else "forward"
-    records = [
-        UnmappedRecord.from_pipeline_entry(entry, media_type=kind, direction=direction)
-        for entry in outcome.unmatched
-    ]
-    state = load_unmapped_state(config.resolved_unmapped_state_path)
-    state.replace_run(kind, direction, records)
-    save_unmapped_state(state, config.resolved_unmapped_state_path)
-
-
-def _sync_favorites(
-    config: Config,
-    media_state: dict[str, tuple[SyncOutcome, list[Any]]],
-    *,
-    reverse: bool,
-    jikan_client: JikanClient | None,
-    anilist_client: AniListClient,
-) -> dict[str, FavoritesOutcome]:
-    """Returns the AniList->MAL report-only outcome per media kind, for
-    _print_summary's report section to fold favorites mismatches into."""
-    if jikan_client is None:
-        click.secho(
-            "warning: favorites sync requires the Jikan API; skipping "
-            "(enable with --jikan-api or favorites.enabled in config)",
-            fg="yellow", err=True,
-        )
-        return {}
-
-    try:
-        mal_anime_fav_ids, mal_manga_fav_ids = jikan_client.get_user_favorites(config.myanimelist.username)
-    except JikanApiError as exc:
-        click.secho(f"warning: failed to fetch MAL favorites: {exc}", fg="yellow", err=True)
-        return {}
-
-    report_outcomes: dict[str, FavoritesOutcome] = {}
-    for kind, (outcome, anilist_entries) in media_state.items():
-        mal_fav_ids = mal_anime_fav_ids if kind == "anime" else mal_manga_fav_ids
-        id_map = build_id_mapping(outcome.matched)
-        if reverse:
-            mal_to_anilist, anilist_to_mal = id_map, _invert(id_map)
-        else:
-            anilist_to_mal, mal_to_anilist = id_map, _invert(id_map)
-
-        anilist_by_id = {e.id_anilist: e for e in anilist_entries}
-        write_outcome = sync_mal_favorites_to_anilist(
-            mal_fav_ids, anilist_by_id, mal_to_anilist, anilist_client, media_kind=kind
-        )
-        click.echo(f"{kind} favorites: added {len(write_outcome.added_to_anilist)} to AniList")
-        report_outcome = check_anilist_favorites_against_mal(anilist_entries, mal_fav_ids, anilist_to_mal)
-
-        # build_report only takes one FavoritesOutcome per kind; fold the
-        # write-side errors into the report-side mismatches so both surface
-        # in the final summary.
-        report_outcome.errors = write_outcome.errors
-        report_outcomes[kind] = report_outcome
-
-    return report_outcomes
+    _print_summary(outcomes, favorites_outcomes)
 
 
 @main.command()
@@ -485,7 +213,7 @@ def sync(
     """Sync anime/manga lists between AniList and MyAnimeList."""
     configure_logging(verbose)
     config = _load_config(ctx)
-    _run_sync(
+    _run_sync_command(
         config,
         force=force, dry_run=dry_run, manga=manga, all_media=all_media, reverse=reverse_direction,
         offline_db=offline_db, offline_db_force_refresh=offline_db_force_refresh,
@@ -522,7 +250,7 @@ def watch(
         config.watch.schedule, config.watch.interval = schedule, ""
 
     def run_once() -> None:
-        _run_sync(
+        _run_sync_command(
             config,
             force=force, dry_run=dry_run, manga=manga, all_media=all_media, reverse=reverse_direction,
             offline_db=offline_db, offline_db_force_refresh=offline_db_force_refresh,

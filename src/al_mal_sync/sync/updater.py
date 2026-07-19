@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from ..mapping.strategies import MatchResult
 from ..models import Anime, Manga
@@ -86,7 +86,13 @@ class Updater:
         self.force = force
         self.dry_run = dry_run
 
-    def run(self, sources: list[Source], existing_targets: dict[int, Target]) -> SyncOutcome:
+    def run(
+        self,
+        sources: list[Source],
+        existing_targets: dict[int, Target],
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> SyncOutcome:
         outcome = SyncOutcome()
 
         # Deterministic, readable progress output: group by status, then title.
@@ -100,8 +106,11 @@ class Updater:
         resolved, outcome.conflicts = resolve_duplicates(matches)
         outcome.matched = resolved
 
-        for item in resolved:
+        total = len(resolved)
+        for index, item in enumerate(resolved, start=1):
             self._process(item.source, item.match.target, outcome)
+            if on_progress is not None:
+                on_progress(index, total)
 
         return outcome
 

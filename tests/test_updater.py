@@ -157,6 +157,32 @@ class TestUpdaterIgnoreList:
         assert outcome.unmatched == []
 
 
+class TestUpdaterProgressCallback:
+    def test_on_progress_called_once_per_resolved_match_with_running_total(self) -> None:
+        source_a = _anime(id_anilist=1, progress=5, title_en="A")
+        source_b = _anime(id_anilist=2, progress=5, title_en="B")
+        target_a = _anime(id_mal=5, progress=0)
+        target_b = _anime(id_mal=6, progress=0)
+        service = _FakeTargetService()
+        chain = _chain_for((source_a, target_a), (source_b, target_b))
+        updater = Updater(chain, service)
+        calls: list[tuple[int, int]] = []
+
+        updater.run([source_a, source_b], {}, on_progress=lambda current, total: calls.append((current, total)))
+
+        assert calls == [(1, 2), (2, 2)]
+
+    def test_on_progress_not_required(self) -> None:
+        source = _anime(progress=5)
+        target = _anime(progress=0, id_mal=99)
+        service = _FakeTargetService()
+        updater = Updater(_chain_for((source, target)), service)
+
+        outcome = updater.run([source], {})
+
+        assert outcome.updated == [source]
+
+
 class TestUpdaterDedupIntegration:
     def test_duplicate_matches_produce_one_update_and_one_conflict(self) -> None:
         target = _anime(id_mal=5, progress=0)

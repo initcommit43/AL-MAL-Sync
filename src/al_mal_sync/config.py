@@ -109,6 +109,14 @@ def app_config_dir() -> Path:
     return user_config_dir() / APP_NAME
 
 
+def default_config_path() -> str:
+    """Where the GUI reads/writes config.yaml by default. The CLI has no
+    equivalent default -- it requires an explicit `-c`/`--config` path or
+    env-only configuration -- this exists so the GUI's Settings screen has
+    somewhere sensible to save to without the user picking a location."""
+    return str(app_config_dir() / "config.yaml")
+
+
 def default_token_path() -> str:
     return str(app_config_dir() / "token.json")
 
@@ -429,6 +437,63 @@ def _config_from_yaml(data: dict[str, Any]) -> Config:
     cfg.favorites.enabled = bool(favorites.get("enabled", cfg.favorites.enabled))
 
     return cfg
+
+
+# --------------------------------------------------------------------------
+# YAML serialization (GUI settings screen; the CLI itself only ever reads
+# config.yaml, never writes it)
+# --------------------------------------------------------------------------
+
+
+def _config_to_dict(cfg: Config) -> dict[str, Any]:
+    """Mirror _config_from_yaml in reverse. auth_url/token_url are
+    deliberately omitted -- they're advanced/rarely-customized fields not
+    present in config.example.yaml either, so round-tripping through this
+    always leaves them at the DEFAULT_*_URL constants."""
+    return {
+        "oauth": {"port": cfg.oauth.port, "redirect_uri": cfg.oauth.redirect_uri},
+        "anilist": {
+            "client_id": cfg.anilist.client_id,
+            "client_secret": cfg.anilist.client_secret,
+            "username": cfg.anilist.username,
+        },
+        "myanimelist": {
+            "client_id": cfg.myanimelist.client_id,
+            "client_secret": cfg.myanimelist.client_secret,
+            "username": cfg.myanimelist.username,
+        },
+        "token_file_path": cfg.token_file_path,
+        "mappings_file_path": cfg.mappings_file_path,
+        "http_timeout": cfg.http_timeout,
+        "watch": {"interval": cfg.watch.interval, "schedule": cfg.watch.schedule},
+        "offline_database": {
+            "enabled": cfg.offline_database.enabled,
+            "cache_dir": cfg.offline_database.cache_dir,
+            "auto_update": cfg.offline_database.auto_update,
+        },
+        "arm_api": {"enabled": cfg.arm_api.enabled, "base_url": cfg.arm_api.base_url},
+        "hato_api": {
+            "enabled": cfg.hato_api.enabled,
+            "base_url": cfg.hato_api.base_url,
+            "cache_dir": cfg.hato_api.cache_dir,
+            "cache_max_age": cfg.hato_api.cache_max_age,
+        },
+        "jikan_api": {
+            "enabled": cfg.jikan_api.enabled,
+            "cache_dir": cfg.jikan_api.cache_dir,
+            "cache_max_age": cfg.jikan_api.cache_max_age,
+        },
+        "favorites": {"enabled": cfg.favorites.enabled},
+    }
+
+
+def save_config(cfg: Config, path: str | os.PathLike[str]) -> None:
+    """Write `cfg` to `path` as YAML, same plain-PyYAML-dump approach as
+    mapping/manual_mappings.py's MappingsConfig.save(). Used by the GUI's
+    Settings screen so a non-technical user never has to hand-edit YAML."""
+    file_path = Path(path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(yaml.safe_dump(_config_to_dict(cfg), sort_keys=False), encoding="utf-8")
 
 
 # --------------------------------------------------------------------------
