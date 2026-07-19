@@ -48,6 +48,15 @@ def _run_with_timeout(app: QCoreApplication, thread: QThread, timeout_ms: int = 
     # test -- otherwise a still-shutting-down QThread from this test can
     # collide with the next test's fresh QCoreApplication.exec() cycle.
     thread.wait(2000)
+    # ... and drain the queue a bit further: run_in_thread's _Coordinator
+    # schedules deleteLater() cleanup that may still be queued even after
+    # wait() confirms the thread itself is done. Left queued, it gets
+    # processed interleaved with the *next* test's own processEvents()
+    # calls instead, which has been observed to abort the process (see
+    # conftest.py's wait_until docstring for the same issue via a different
+    # code path).
+    for _ in range(20):
+        app.processEvents()
 
 
 class TestRunInThread:

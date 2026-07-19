@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from al_mal_sync.config import Config  # noqa: E402
 from al_mal_sync.gui.tabs.login_tab import LoginTab  # noqa: E402
 
+from .conftest import wait_until  # noqa: E402
 
 # qt_app fixture is shared from conftest.py.
 
@@ -61,20 +62,14 @@ class TestLoginTab:
             assert tab._login_buttons["myanimelist"].isEnabled() is False
             assert tab._pending_service == "anilist"
         finally:
-            # Unblock the worker thread. Its finished signal (and the
-            # thread.quit() run_in_thread also connects) only actually gets
-            # delivered once the GUI thread's event queue is pumped -- a
-            # blind thread.wait() would hang forever since nothing here
-            # calls app.exec(). Poll processEvents() until the thread
-            # actually exits so no background QThread outlives the test.
+            # Unblock the worker thread. Its finished signal only actually
+            # gets delivered once the GUI thread's event queue is pumped --
+            # a blind thread.wait() would hang forever since nothing here
+            # calls app.exec(). wait_until also settles the queue afterward
+            # so this thread's deleteLater() cleanup doesn't leak into the
+            # next test (see its docstring in conftest.py).
             release.set()
-            thread = tab._login_thread
-            if thread is not None:
-                for _ in range(200):
-                    qt_app.processEvents()
-                    if thread.wait(10):
-                        break
-                assert thread.isFinished()
+            wait_until(qt_app, lambda: tab._login_thread is None or tab._login_thread.isFinished())
 
     def test_second_login_click_while_pending_is_ignored(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
