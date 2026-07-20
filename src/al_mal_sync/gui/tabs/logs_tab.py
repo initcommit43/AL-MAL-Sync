@@ -6,9 +6,18 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..log_bridge import PACKAGE_LOGGER_NAME, QtLogHandler
+from ..widgets import apply_page_layout
 
 
 class LogsTab(QWidget):
@@ -16,6 +25,10 @@ class LogsTab(QWidget):
         super().__init__(parent)
 
         layout = QVBoxLayout(self)
+        apply_page_layout(layout)
+        title = QLabel("Logs", self)
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
 
         toolbar = QHBoxLayout()
         self.verbose_checkbox = QCheckBox("Verbose (debug logging)", self)

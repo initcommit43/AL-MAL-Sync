@@ -1,8 +1,9 @@
-"""Login tab: one row per service (AniList, MyAnimeList) showing auth
-status, with Login/Logout buttons. Login runs oauth.login() on a worker
-thread since it blocks waiting for the OAuth redirect callback; the browser
-is opened from on_auth_url (safe to call from the worker thread -- it just
-shells out, no widget access).
+"""Login page: one row per service (AniList, MyAnimeList) showing auth
+status, with exactly one action button visible at a time -- "Log in to..."
+when logged out, "Log out" when logged in. Login runs oauth.login() on a
+worker thread since it blocks waiting for the OAuth redirect callback; the
+browser is opened from on_auth_url (safe to call from the worker thread --
+it just shells out, no widget access).
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import webbrowser
 from datetime import datetime
 from typing import Callable
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from ...config import Config
 from ...oauth import OAuth, OAuthError, create_anilist_oauth, create_myanimelist_oauth
+from ..widgets import apply_page_layout
 from ..workers import run_in_thread
 
 _SERVICES = (("anilist", "AniList"), ("myanimelist", "MyAnimeList"))
@@ -38,6 +41,10 @@ def _oauth_for(service_key: str, config: Config) -> OAuth:
 
 
 class LoginTab(QWidget):
+    # Emitted after a successful login or logout, so other pages (the
+    # Dashboard) know to refresh their own view of auth state.
+    auth_changed = Signal()
+
     def __init__(self, get_config: Callable[[], Config], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._get_config = get_config
@@ -58,6 +65,17 @@ class LoginTab(QWidget):
         self._logout_buttons: dict[str, QPushButton] = {}
 
         layout = QVBoxLayout(self)
+        apply_page_layout(layout)
+        title = QLabel("Log in", self)
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        subtitle = QLabel(
+            "Connect your AniList and MyAnimeList accounts. Both are needed before you can sync.", self
+        )
+        subtitle.setObjectName("pageSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
         for service_key, display_name in _SERVICES:
             layout.addWidget(self._build_service_row(service_key, display_name))
         layout.addStretch(1)
@@ -72,12 +90,14 @@ class LoginTab(QWidget):
         self._status_labels[service_key] = status_label
         row.addWidget(status_label, 1)
 
-        login_button = QPushButton("Login", group)
+        login_button = QPushButton(f"Log in to {display_name}", group)
+        login_button.setObjectName("primaryButton")
         login_button.clicked.connect(self._make_login_handler(service_key))
         self._login_buttons[service_key] = login_button
         row.addWidget(login_button)
 
-        logout_button = QPushButton("Logout", group)
+        logout_button = QPushButton("Log out", group)
+        logout_button.setObjectName("dangerButton")
         logout_button.clicked.connect(self._make_logout_handler(service_key))
         self._logout_buttons[service_key] = logout_button
         row.addWidget(logout_button)
@@ -99,17 +119,27 @@ class LoginTab(QWidget):
 
     def _refresh_one_status(self, service_key: str, config: Config) -> None:
         label = self._status_labels[service_key]
+        login_button = self._login_buttons[service_key]
+        logout_button = self._logout_buttons[service_key]
         try:
             oauth = _oauth_for(service_key, config)
         except OAuthError as exc:
-            label.setText(f"config error: {exc}")
+            label.setText(f"Config error: {exc}")
+            login_button.setVisible(False)
+            logout_button.setVisible(False)
             return
+
         if oauth.needs_init:
-            label.setText("not authenticated")
-        elif oauth.is_token_valid:
-            label.setText(f"authenticated (expires {_format_expiry(oauth.token_expiry)})")
+            label.setText("Not logged in.")
+            login_button.setVisible(True)
+            logout_button.setVisible(False)
         else:
-            label.setText("token expired, will refresh on next use")
+            if oauth.is_token_valid:
+                label.setText(f"Logged in (session valid until {_format_expiry(oauth.token_expiry)}).")
+            else:
+                label.setText("Logged in (session will refresh automatically next time it's used).")
+            login_button.setVisible(False)
+            logout_button.setVisible(True)
 
     def _on_login_clicked(self, service_key: str) -> None:
         if self._pending_service is not None:
@@ -117,12 +147,11 @@ class LoginTab(QWidget):
         config = self._get_config()
         oauth = _oauth_for(service_key, config)
         if not oauth.needs_init:
-            self._status_labels[service_key].setText("already authenticated")
             return
 
         self._pending_service = service_key
         self._set_buttons_enabled(False)
-        self._status_labels[service_key].setText("waiting for browser login...")
+        self._status_labels[service_key].setText("Waiting for you to finish logging in in your browser...")
 
         self._login_thread, self._login_worker = run_in_thread(
             self,
@@ -139,18 +168,20 @@ class LoginTab(QWidget):
         self._set_buttons_enabled(True)
         if service_key is not None:
             self._refresh_one_status(service_key, self._get_config())
+        self.auth_changed.emit()
 
     def _on_login_error(self, message: str) -> None:
         service_key = self._pending_service
         self._pending_service = None
         self._set_buttons_enabled(True)
         if service_key is not None:
-            self._status_labels[service_key].setText(f"login failed: {message}")
+            self._status_labels[service_key].setText(f"Login failed: {message}")
 
     def _on_logout_clicked(self, service_key: str) -> None:
         # Just deletes a local file -- fast enough to run on the GUI thread.
         _oauth_for(service_key, self._get_config()).delete_token()
         self._refresh_one_status(service_key, self._get_config())
+        self.auth_changed.emit()
 
     def _set_buttons_enabled(self, enabled: bool) -> None:
         for button in self._login_buttons.values():

@@ -1,24 +1,35 @@
-"""Main application window: a tab per major CLI command (login/status ->
-Login, sync -> Sync, watch -> Watch, unmapped -> Unmapped, plus a Settings
-tab for config.yaml/mappings.yaml editing and a Logs tab)."""
+"""Main application window: a left sidebar (Dashboard first, Settings last)
+driving a stacked page area -- Dashboard, Sync, Login, Auto-Sync, Mapping
+Issues, Logs, Settings."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QAction, QDesktopServices
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QTabWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..config import Config, ConfigError, app_config_dir, default_config_path, load_config
 from . import log_bridge
+from .tabs.auto_sync_tab import AutoSyncTab
+from .tabs.dashboard_tab import DashboardTab
 from .tabs.logs_tab import LogsTab
 from .tabs.login_tab import LoginTab
-from .tabs.mappings_tab import MappingsTab
+from .tabs.mapping_issues_tab import MappingIssuesTab
 from .tabs.settings_tab import SettingsTab
 from .tabs.sync_tab import SyncTab
-from .tabs.unmapped_tab import UnmappedTab
-from .tabs.watch_tab import WatchTab
 
 WINDOW_TITLE = "AL-MAL-Sync"
+SIDEBAR_WIDTH = 200
 
 _ABOUT_TEXT = (
     "<b>AL-MAL-Sync</b><br>"
@@ -35,7 +46,7 @@ _ABOUT_TEXT = (
 def _load_initial_config(path: str) -> Config:
     """Missing/incomplete config.yaml is not fatal for the GUI the way it is
     for the CLI -- first-run users have nothing yet, and should land on the
-    Settings tab to fill it in rather than seeing a crash."""
+    Settings page to fill it in rather than seeing a crash."""
     try:
         return load_config(path)
     except ConfigError:
@@ -46,7 +57,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
-        self.resize(900, 600)
+        self.resize(1000, 650)
 
         # Installed here (not in app.py) so it exists for the lifetime of the
         # main window; the Sync tab's live log panel and the Logs tab both
@@ -56,41 +67,89 @@ class MainWindow(QMainWindow):
         self.config_path = default_config_path()
         self.config = _load_initial_config(self.config_path)
 
-        self.login_tab = LoginTab(self.get_config)
-        self.settings_tab = SettingsTab(self.get_config, self.config_path)
+        self.dashboard_tab = DashboardTab(self.get_config)
         self.sync_tab = SyncTab(self.get_config, self.log_handler)
-        self.watch_tab = WatchTab(self.get_config, self.sync_tab)
-        self.unmapped_tab = UnmappedTab(self.get_config)
-        self.mappings_tab = MappingsTab(self.get_config)
+        self.login_tab = LoginTab(self.get_config)
+        self.auto_sync_tab = AutoSyncTab(self.get_config, self.sync_tab)
+        self.mapping_issues_tab = MappingIssuesTab(self.get_config)
         self.logs_tab = LogsTab(self.log_handler)
-        # Login status can go stale after Settings changes which service
-        # each button's credentials point at; refresh whenever the user
-        # switches back to the Login tab. Watch's schedule display is
-        # likewise a read-only mirror of config.watch, set on Settings.
-        self.settings_tab.save_button.clicked.connect(self.login_tab.refresh_status)
-        self.settings_tab.save_button.clicked.connect(self.watch_tab.refresh_schedule_display)
+        self.settings_tab = SettingsTab(self.get_config, self.config_path)
 
-        self.tabs = QTabWidget(self)
-        self.tabs.addTab(self.settings_tab, "Settings")
-        self.tabs.addTab(self.login_tab, "Login")
-        self.tabs.addTab(self.sync_tab, "Sync")
-        self.tabs.addTab(self.watch_tab, "Watch")
-        self.tabs.addTab(self.unmapped_tab, "Unmapped")
-        self.tabs.addTab(self.mappings_tab, "Mappings")
-        self.tabs.addTab(self.logs_tab, "Logs")
-        # Unmapped/Mappings reflect on-disk state a sync run can change
-        # underneath them; reload from disk whenever the user switches in,
-        # rather than requiring a manual Refresh click every time.
-        self.tabs.currentChanged.connect(self._on_tab_changed)
-        self.setCentralWidget(self.tabs)
+        # Dashboard-first, Settings-last: the order a casual user should meet
+        # these pages in, not the order they were built in.
+        self._pages: list[tuple[str, str, QWidget]] = [
+            ("dashboard", "Dashboard", self.dashboard_tab),
+            ("sync", "Sync", self.sync_tab),
+            ("login", "Login", self.login_tab),
+            ("auto_sync", "Auto-Sync", self.auto_sync_tab),
+            ("mapping_issues", "Mapping Issues", self.mapping_issues_tab),
+            ("logs", "Logs", self.logs_tab),
+            ("settings", "Settings", self.settings_tab),
+        ]
+        self._page_index_by_key = {key: i for i, (key, _label, _widget) in enumerate(self._pages)}
+
+        self.nav_list = QListWidget(self)
+        self.nav_list.setObjectName("sidebar")
+        self.stack = QStackedWidget(self)
+        for _key, label, widget in self._pages:
+            QListWidgetItem(label, self.nav_list)
+            self.stack.addWidget(widget)
+        self.nav_list.currentRowChanged.connect(self._on_nav_changed)
+
+        self.setCentralWidget(self._build_central_widget())
+        self.nav_list.setCurrentRow(0)
+
+        # Login status/dashboard/auto-sync's schedule display can go stale
+        # after Settings changes which service each button's credentials
+        # point at, or after a login/logout/sync happens elsewhere -- refresh
+        # them on whichever event actually changed what they show, rather
+        # than requiring a manual click every time.
+        self.settings_tab.save_button.clicked.connect(self.login_tab.refresh_status)
+        self.settings_tab.save_button.clicked.connect(self.auto_sync_tab.refresh_schedule_display)
+        self.settings_tab.save_button.clicked.connect(self.dashboard_tab.reload)
+        self.login_tab.auth_changed.connect(self.dashboard_tab.reload)
+        self.sync_tab.sync_finished.connect(self.dashboard_tab.reload)
+        self.dashboard_tab.navigate_requested.connect(self._navigate_to)
 
         self._build_menu()
+
+    def _build_central_widget(self) -> QWidget:
+        sidebar_container = QWidget(self)
+        sidebar_container.setObjectName("sidebarContainer")
+        sidebar_container.setFixedWidth(SIDEBAR_WIDTH)
+        sidebar_layout = QVBoxLayout(sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        app_title = QLabel("AL-MAL-Sync", sidebar_container)
+        app_title.setObjectName("sidebarTitle")
+        sidebar_layout.addWidget(app_title)
+        sidebar_layout.addWidget(self.nav_list, 1)
+
+        central = QWidget(self)
+        central_layout = QHBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(sidebar_container)
+        central_layout.addWidget(self.stack, 1)
+        return central
 
     def get_config(self) -> Config:
         return self.config
 
-    def _on_tab_changed(self, index: int) -> None:
-        widget = self.tabs.widget(index)
+    def _navigate_to(self, key: str) -> None:
+        index = self._page_index_by_key.get(key)
+        if index is not None:
+            self.nav_list.setCurrentRow(index)
+
+    def _on_nav_changed(self, index: int) -> None:
+        if index < 0:
+            return
+        self.stack.setCurrentIndex(index)
+        # Several pages reflect on-disk state a sync run (or another page)
+        # can change underneath them; reload from disk whenever the user
+        # switches in, rather than requiring a manual Refresh click.
+        widget = self.stack.widget(index)
         reload = getattr(widget, "reload", None)
         if callable(reload):
             reload()
@@ -100,7 +159,7 @@ class MainWindow(QMainWindow):
         # Python-side reference has been observed to have its wrapper
         # collected (and the underlying widget along with it) even though
         # it's parented to the menu bar/window, the same class of dangling-
-        # wrapper issue as the per-row cell widgets in unmapped_tab.py.
+        # wrapper issue as the per-row cell widgets in mapping_issues_tab.py.
         self.help_menu = self.menuBar().addMenu("Help")
 
         self.open_config_action = QAction("Open Config Folder", self)

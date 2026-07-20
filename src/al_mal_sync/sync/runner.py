@@ -34,6 +34,7 @@ from ..mapping.strategies import (
 )
 from ..models import Anime, Manga
 from ..oauth import create_anilist_oauth, create_myanimelist_oauth
+from ..sync_history import SyncHistoryEntry, save_sync_history
 from ..unmapped import UnmappedRecord, load_unmapped_state, save_unmapped_state
 from .favorites import (
     FavoritesOutcome,
@@ -47,6 +48,7 @@ from .service import (
     MyAnimeListAnimeService,
     MyAnimeListMangaService,
 )
+from .statistics import SyncStatistics
 from .updater import SyncOutcome, Updater
 
 logger = logging.getLogger(__name__)
@@ -201,6 +203,7 @@ def run_sync(
             )
 
         outcomes = {kind: outcome for kind, (outcome, _entries) in media_state.items()}
+        _persist_sync_history(config, outcomes)
         return outcomes, favorites_outcomes
     finally:
         if hato_client is not None:
@@ -289,6 +292,11 @@ def _persist_unmapped(config: Config, kind: str, reverse: bool, outcome: SyncOut
     state = load_unmapped_state(config.resolved_unmapped_state_path)
     state.replace_run(kind, direction, records)
     save_unmapped_state(state, config.resolved_unmapped_state_path)
+
+
+def _persist_sync_history(config: Config, outcomes: dict[str, SyncOutcome]) -> None:
+    entry = SyncHistoryEntry.from_statistics(SyncStatistics.from_outcomes(outcomes))
+    save_sync_history(entry, config.resolved_sync_history_path)
 
 
 def _sync_favorites(

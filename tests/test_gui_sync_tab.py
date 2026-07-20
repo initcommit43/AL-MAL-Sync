@@ -157,3 +157,77 @@ class TestSyncTab:
         log_handler.log_emitted.emit("hello from updater", 20)
 
         assert "hello from updater" in tab.log_view.toPlainText()
+
+    def test_what_to_sync_and_direction_selection_maps_to_run_sync_kwargs(
+        self, qt_app: QApplication, log_handler: log_bridge.QtLogHandler,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_run_sync(config: Config, **kwargs: object):
+            captured.update(kwargs)
+            return {}, {}
+
+        monkeypatch.setattr(sync_tab_module, "run_sync", fake_run_sync)
+        tab = SyncTab(lambda: Config(), log_handler)
+
+        tab.what_to_sync_combo.setCurrentIndex(2)  # "Both anime and manga"
+        tab.direction_combo.setCurrentIndex(1)  # reverse
+        tab.run_button.click()
+        wait_until(qt_app, lambda: tab.run_button.isEnabled())
+
+        assert captured["manga"] is False
+        assert captured["all_media"] is True
+        assert captured["reverse"] is True
+
+    def test_manga_only_selection_maps_to_manga_kwarg(
+        self, qt_app: QApplication, log_handler: log_bridge.QtLogHandler,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_run_sync(config: Config, **kwargs: object):
+            captured.update(kwargs)
+            return {}, {}
+
+        monkeypatch.setattr(sync_tab_module, "run_sync", fake_run_sync)
+        tab = SyncTab(lambda: Config(), log_handler)
+
+        tab.what_to_sync_combo.setCurrentIndex(1)  # "Manga"
+        tab.run_button.click()
+        wait_until(qt_app, lambda: tab.run_button.isEnabled())
+
+        assert captured["manga"] is True
+        assert captured["all_media"] is False
+        assert captured["reverse"] is False
+
+    def test_sync_finished_signal_emitted_on_success(
+        self, qt_app: QApplication, log_handler: log_bridge.QtLogHandler,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(sync_tab_module, "run_sync", lambda config, **kwargs: ({}, {}))
+        tab = SyncTab(lambda: Config(), log_handler)
+        calls = []
+        tab.sync_finished.connect(lambda: calls.append(1))
+
+        tab.run_button.click()
+        wait_until(qt_app, lambda: tab.run_button.isEnabled())
+
+        assert calls == [1]
+
+    def test_sync_finished_signal_emitted_on_error(
+        self, qt_app: QApplication, log_handler: log_bridge.QtLogHandler,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def failing_run_sync(config: Config, **kwargs: object):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(sync_tab_module, "run_sync", failing_run_sync)
+        tab = SyncTab(lambda: Config(), log_handler)
+        calls = []
+        tab.sync_finished.connect(lambda: calls.append(1))
+
+        tab.run_button.click()
+        wait_until(qt_app, lambda: tab.run_button.isEnabled())
+
+        assert calls == [1]

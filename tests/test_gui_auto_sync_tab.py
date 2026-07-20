@@ -1,7 +1,8 @@
-"""Tests for gui/tabs/watch_tab.py: schedule display mirroring config.watch,
-start/stop validation, and that a fired timer triggers the Sync tab's run
-button (not a duplicate copy of run_sync wiring). A lightweight fake stands
-in for SyncTab -- WatchTab only ever touches `sync_tab.run_button`."""
+"""Tests for gui/tabs/auto_sync_tab.py: schedule display mirroring
+config.watch, start/stop validation, and that a fired timer triggers the
+Sync tab's run button (not a duplicate copy of run_sync wiring). A
+lightweight fake stands in for SyncTab -- AutoSyncTab only ever touches
+`sync_tab.run_button`."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget  # noqa: E402
 
 from al_mal_sync.config import Config, WatchConfig  # noqa: E402
-from al_mal_sync.gui.tabs.watch_tab import WatchTab  # noqa: E402
+from al_mal_sync.gui.tabs.auto_sync_tab import AutoSyncTab  # noqa: E402
 
 from .conftest import wait_until  # noqa: E402
 
@@ -30,36 +31,34 @@ class _FakeSyncTab(QWidget):
         self.click_count += 1
 
 
-class TestWatchTab:
+class TestAutoSyncTab:
     def test_no_schedule_shows_hint(self, qt_app: QApplication) -> None:
-        tab = WatchTab(lambda: Config(), _FakeSyncTab())
+        tab = AutoSyncTab(lambda: Config(), _FakeSyncTab())
 
-        assert "No schedule configured" in tab.schedule_label.text()
-        assert tab.toggle_button.text() == "Start Watching"
+        assert "No schedule set" in tab.schedule_label.text()
+        assert tab.toggle_button.text() == "Start Auto-Sync"
 
     def test_shows_configured_interval(self, qt_app: QApplication) -> None:
         cfg = Config()
         cfg.watch.interval = "6h"
-        tab = WatchTab(lambda: cfg, _FakeSyncTab())
+        tab = AutoSyncTab(lambda: cfg, _FakeSyncTab())
 
         assert "6h" in tab.schedule_label.text()
 
     def test_shows_configured_cron_schedule(self, qt_app: QApplication) -> None:
         cfg = Config()
         cfg.watch.schedule = "0 */6 * * *"
-        tab = WatchTab(lambda: cfg, _FakeSyncTab())
+        tab = AutoSyncTab(lambda: cfg, _FakeSyncTab())
 
         assert "0 */6 * * *" in tab.schedule_label.text()
 
-    def test_start_with_no_schedule_shows_error_and_does_not_start(
-        self, qt_app: QApplication
-    ) -> None:
-        tab = WatchTab(lambda: Config(), _FakeSyncTab())
+    def test_start_with_no_schedule_shows_error_and_does_not_start(self, qt_app: QApplication) -> None:
+        tab = AutoSyncTab(lambda: Config(), _FakeSyncTab())
 
         tab.toggle_button.click()
 
-        assert "Cannot start" in tab.status_label.text()
-        assert tab.toggle_button.text() == "Start Watching"
+        assert "Can't start" in tab.status_label.text()
+        assert tab.toggle_button.text() == "Start Auto-Sync"
         assert tab._is_watching() is False
 
     def test_start_with_valid_interval_toggles_button_and_shows_countdown(
@@ -67,12 +66,12 @@ class TestWatchTab:
     ) -> None:
         cfg = Config()
         cfg.watch.interval = "1h"
-        tab = WatchTab(lambda: cfg, _FakeSyncTab())
+        tab = AutoSyncTab(lambda: cfg, _FakeSyncTab())
 
         try:
             tab.toggle_button.click()
 
-            assert tab.toggle_button.text() == "Stop Watching"
+            assert tab.toggle_button.text() == "Stop Auto-Sync"
             assert tab._is_watching() is True
             assert "Next sync at" in tab.status_label.text()
         finally:
@@ -81,14 +80,14 @@ class TestWatchTab:
     def test_stop_resets_button_and_status(self, qt_app: QApplication) -> None:
         cfg = Config()
         cfg.watch.interval = "1h"
-        tab = WatchTab(lambda: cfg, _FakeSyncTab())
+        tab = AutoSyncTab(lambda: cfg, _FakeSyncTab())
         tab.toggle_button.click()
 
         tab.toggle_button.click()  # second click while watching = stop
 
-        assert tab.toggle_button.text() == "Start Watching"
+        assert tab.toggle_button.text() == "Start Auto-Sync"
         assert tab._is_watching() is False
-        assert "Not watching" in tab.status_label.text()
+        assert "Not running automatically" in tab.status_label.text()
 
     def test_timer_fire_clicks_sync_tab_run_button_and_reschedules(
         self, qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
@@ -101,7 +100,7 @@ class TestWatchTab:
         cfg = Config()
         cfg.watch.interval = "1s"
         fake_sync_tab = _FakeSyncTab()
-        tab = WatchTab(lambda: cfg, fake_sync_tab)
+        tab = AutoSyncTab(lambda: cfg, fake_sync_tab)
 
         try:
             tab.toggle_button.click()
@@ -111,12 +110,10 @@ class TestWatchTab:
         finally:
             tab._stop_watching()
 
-    def test_refresh_schedule_display_reflects_config_changes(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_refresh_schedule_display_reflects_config_changes(self, qt_app: QApplication) -> None:
         cfg = Config()
-        tab = WatchTab(lambda: cfg, _FakeSyncTab())
-        assert "No schedule configured" in tab.schedule_label.text()
+        tab = AutoSyncTab(lambda: cfg, _FakeSyncTab())
+        assert "No schedule set" in tab.schedule_label.text()
 
         cfg.watch.interval = "12h"
         tab.refresh_schedule_display()

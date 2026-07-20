@@ -1,7 +1,8 @@
-"""Tests for gui/main_window.py: all tabs wired up, and the Help menu
-survives construction -- a regression test for a real crash found during
-development (QMenu/QAction objects with no Python-side reference had their
-underlying C++ objects deleted despite being parented to the menu bar; see
+"""Tests for gui/main_window.py: all seven pages wired up in the
+dashboard-first/settings-last sidebar order, and the Help menu survives
+construction -- a regression test for a real crash found during development
+(QMenu/QAction objects with no Python-side reference had their underlying
+C++ objects deleted despite being parented to the menu bar; see
 main_window.py's _build_menu comment). config_path is always redirected to
 tmp_path so this never touches the user's real config.yaml/token store."""
 
@@ -30,11 +31,17 @@ def window(qt_app: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 class TestMainWindow:
-    def test_all_seven_tabs_present(self, window: MainWindow) -> None:
-        titles = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    def test_all_seven_pages_present_in_dashboard_first_settings_last_order(
+        self, window: MainWindow
+    ) -> None:
+        titles = [window.nav_list.item(i).text() for i in range(window.nav_list.count())]
         assert titles == [
-            "Settings", "Login", "Sync", "Watch", "Unmapped", "Mappings", "Logs",
+            "Dashboard", "Sync", "Login", "Auto-Sync", "Mapping Issues", "Logs", "Settings",
         ]
+
+    def test_dashboard_is_the_page_shown_on_startup(self, window: MainWindow) -> None:
+        assert window.nav_list.currentRow() == 0
+        assert window.stack.currentWidget() is window.dashboard_tab
 
     def test_help_menu_survives_construction(self, window: MainWindow) -> None:
         # Regression test: this used to raise
@@ -74,13 +81,39 @@ class TestMainWindow:
         assert len(calls) == 1
         assert calls[0][0] == "About AL-MAL-Sync"
 
-    def test_switching_to_unmapped_tab_triggers_reload(
+    def test_switching_to_mapping_issues_page_triggers_reload(
         self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls = []
-        monkeypatch.setattr(window.unmapped_tab, "reload", lambda: calls.append(1))
+        monkeypatch.setattr(window.mapping_issues_tab, "reload", lambda: calls.append(1))
 
-        index = window.tabs.indexOf(window.unmapped_tab)
-        window.tabs.setCurrentIndex(index)
+        index = window.stack.indexOf(window.mapping_issues_tab)
+        window.nav_list.setCurrentRow(index)
+
+        assert calls == [1]
+
+    def test_dashboard_navigate_requested_switches_page(self, window: MainWindow) -> None:
+        window.dashboard_tab.navigate_requested.emit("login")
+
+        assert window.nav_list.currentRow() == window.stack.indexOf(window.login_tab)
+        assert window.stack.currentWidget() is window.login_tab
+
+    def test_login_auth_changed_refreshes_dashboard(
+        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = []
+        monkeypatch.setattr(window.dashboard_tab, "reload", lambda: calls.append(1))
+
+        window.login_tab.auth_changed.emit()
+
+        assert calls == [1]
+
+    def test_sync_finished_refreshes_dashboard(
+        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls = []
+        monkeypatch.setattr(window.dashboard_tab, "reload", lambda: calls.append(1))
+
+        window.sync_tab.sync_finished.emit()
 
         assert calls == [1]

@@ -107,6 +107,7 @@ def _stub_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "load_mappings", lambda path=None: MappingsConfig())
     monkeypatch.setattr(runner, "load_unmapped_state", lambda path=None: UnmappedState())
     monkeypatch.setattr(runner, "save_unmapped_state", lambda state, path=None: None)
+    monkeypatch.setattr(runner, "save_sync_history", lambda entry, path=None: None)
 
 
 def _config() -> Config:
@@ -153,3 +154,24 @@ class TestRunSync:
             arm_api=False, arm_api_url=None, jikan_api=False, favorites=False,
         )
         assert outcomes["anime"].updated == []
+
+    def test_persists_sync_history_on_success(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[Any] = []
+        monkeypatch.setattr(
+            runner, "save_sync_history", lambda entry, path=None: calls.append((entry, path))
+        )
+
+        config = _config()
+        runner.run_sync(
+            config,
+            force=False, dry_run=False, manga=False, all_media=True, reverse=False,
+            offline_db=False, offline_db_force_refresh=False,
+            arm_api=False, arm_api_url=None, jikan_api=False, favorites=False,
+        )
+
+        assert len(calls) == 1
+        entry, path = calls[0]
+        assert set(entry.per_kind) == {"anime", "manga"}
+        assert path == config.resolved_sync_history_path

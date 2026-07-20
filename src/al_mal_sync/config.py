@@ -141,6 +141,10 @@ def default_unmapped_state_path() -> str:
     return str(app_config_dir() / "state" / "unmapped.json")
 
 
+def default_sync_history_path() -> str:
+    return str(app_config_dir() / "state" / "sync_history.json")
+
+
 # --------------------------------------------------------------------------
 # Config schema
 # --------------------------------------------------------------------------
@@ -275,6 +279,10 @@ class Config:
     @property
     def resolved_unmapped_state_path(self) -> str:
         return default_unmapped_state_path()
+
+    @property
+    def resolved_sync_history_path(self) -> str:
+        return default_sync_history_path()
 
     def get_http_timeout(self) -> timedelta:
         if not self.http_timeout:

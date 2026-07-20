@@ -1,8 +1,9 @@
-"""Tests for gui/tabs/login_tab.py's status display and logout flow.
-token_file_path always points at tmp_path -- never the user's real stored
-credentials. The interactive login flow (opens a real browser, waits for an
-OAuth redirect) isn't something a unit test can drive; only the parts that
-don't require a live browser round-trip are covered here."""
+"""Tests for gui/tabs/login_tab.py's status display, single-visible-button
+behavior, and logout flow. token_file_path always points at tmp_path --
+never the user's real stored credentials. The interactive login flow (opens
+a real browser, waits for an OAuth redirect) isn't something a unit test can
+drive; only the parts that don't require a live browser round-trip are
+covered here."""
 
 from __future__ import annotations
 
@@ -30,13 +31,17 @@ def config(tmp_path: Path) -> Config:
 
 
 class TestLoginTab:
-    def test_shows_not_authenticated_with_no_token_file(
-        self, qt_app: QApplication, config: Config
-    ) -> None:
+    def test_shows_not_logged_in_with_no_token_file(self, qt_app: QApplication, config: Config) -> None:
         tab = LoginTab(lambda: config)
 
-        assert "not authenticated" in tab._status_labels["anilist"].text()
-        assert "not authenticated" in tab._status_labels["myanimelist"].text()
+        assert "not logged in" in tab._status_labels["anilist"].text().lower()
+        assert "not logged in" in tab._status_labels["myanimelist"].text().lower()
+
+    def test_not_logged_in_shows_only_login_button(self, qt_app: QApplication, config: Config) -> None:
+        tab = LoginTab(lambda: config)
+
+        assert tab._login_buttons["anilist"].isHidden() is False
+        assert tab._logout_buttons["anilist"].isHidden() is True
 
     def test_login_button_disabled_while_a_login_is_in_flight(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
@@ -86,9 +91,7 @@ class TestLoginTab:
 
         assert calls == []
 
-    def test_logout_clears_status_back_to_not_authenticated(
-        self, qt_app: QApplication, config: Config
-    ) -> None:
+    def test_logout_clears_status_back_to_not_logged_in(self, qt_app: QApplication, config: Config) -> None:
         from al_mal_sync.oauth import create_anilist_oauth
 
         oauth = create_anilist_oauth(config)
@@ -101,8 +104,31 @@ class TestLoginTab:
         )
 
         tab = LoginTab(lambda: config)
-        assert "authenticated" in tab._status_labels["anilist"].text()
+        assert "logged in" in tab._status_labels["anilist"].text().lower()
+        assert tab._logout_buttons["anilist"].isHidden() is False
+        assert tab._login_buttons["anilist"].isHidden() is True
 
         tab._on_logout_clicked("anilist")
 
-        assert "not authenticated" in tab._status_labels["anilist"].text()
+        assert "not logged in" in tab._status_labels["anilist"].text().lower()
+        assert tab._login_buttons["anilist"].isHidden() is False
+        assert tab._logout_buttons["anilist"].isHidden() is True
+
+    def test_logout_emits_auth_changed(self, qt_app: QApplication, config: Config) -> None:
+        tab = LoginTab(lambda: config)
+        calls = []
+        tab.auth_changed.connect(lambda: calls.append(1))
+
+        tab._on_logout_clicked("anilist")
+
+        assert calls == [1]
+
+    def test_login_finished_emits_auth_changed(self, qt_app: QApplication, config: Config) -> None:
+        tab = LoginTab(lambda: config)
+        calls = []
+        tab.auth_changed.connect(lambda: calls.append(1))
+
+        tab._pending_service = "anilist"
+        tab._on_login_finished(object())
+
+        assert calls == [1]

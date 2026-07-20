@@ -26,9 +26,11 @@ from PySide6.QtWidgets import (
 )
 
 from ...config import Config, ConfigError, save_config
+from ..widgets import apply_page_layout, cap_width
 
 ANILIST_DEV_URL = "https://anilist.co/settings/developer"
 MAL_DEV_URL = "https://myanimelist.net/apiconfig"
+_FIELD_WIDTH = 340
 
 
 class SettingsTab(QWidget):
@@ -43,6 +45,14 @@ class SettingsTab(QWidget):
         self._config_path = config_path
 
         layout = QVBoxLayout(self)
+        apply_page_layout(layout)
+        title = QLabel("Settings", self)
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        subtitle = QLabel("Your account credentials and how matching/scheduling behaves.", self)
+        subtitle.setObjectName("pageSubtitle")
+        layout.addWidget(subtitle)
+
         layout.addWidget(self._build_anilist_group())
         layout.addWidget(self._build_myanimelist_group())
         layout.addWidget(self._build_sources_group())
@@ -69,13 +79,14 @@ class SettingsTab(QWidget):
         self.anilist_client_secret = QLineEdit(group)
         self.anilist_client_secret.setEchoMode(QLineEdit.EchoMode.Password)
         self.anilist_username = QLineEdit(group)
-        form.addRow("Client ID", self.anilist_client_id)
-        form.addRow("Client Secret", self.anilist_client_secret)
-        form.addRow("Username", self.anilist_username)
+        form.addRow("Client ID", cap_width(self.anilist_client_id, _FIELD_WIDTH))
+        form.addRow("Client Secret", cap_width(self.anilist_client_secret, _FIELD_WIDTH))
+        form.addRow("Username", cap_width(self.anilist_username, _FIELD_WIDTH))
 
         link = QPushButton("Get AniList API credentials...", group)
+        link.setObjectName("linkButton")
         link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(ANILIST_DEV_URL)))
-        form.addRow("", link)
+        form.addRow("", cap_width(link, _FIELD_WIDTH))
         return group
 
     def _build_myanimelist_group(self) -> QGroupBox:
@@ -85,23 +96,44 @@ class SettingsTab(QWidget):
         self.mal_client_secret = QLineEdit(group)
         self.mal_client_secret.setEchoMode(QLineEdit.EchoMode.Password)
         self.mal_username = QLineEdit(group)
-        form.addRow("Client ID", self.mal_client_id)
-        form.addRow("Client Secret", self.mal_client_secret)
-        form.addRow("Username", self.mal_username)
+        form.addRow("Client ID", cap_width(self.mal_client_id, _FIELD_WIDTH))
+        form.addRow("Client Secret", cap_width(self.mal_client_secret, _FIELD_WIDTH))
+        form.addRow("Username", cap_width(self.mal_username, _FIELD_WIDTH))
 
         link = QPushButton("Get MyAnimeList API credentials...", group)
+        link.setObjectName("linkButton")
         link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(MAL_DEV_URL)))
-        form.addRow("", link)
+        form.addRow("", cap_width(link, _FIELD_WIDTH))
         return group
 
     def _build_sources_group(self) -> QGroupBox:
         group = QGroupBox("ID-Matching Sources", self)
         form = QFormLayout(group)
         self.offline_db_enabled = QCheckBox("Offline anime database (recommended, anime only)", group)
+        self.offline_db_enabled.setToolTip(
+            "Uses a downloaded anime database to match titles between AniList and\n"
+            "MyAnimeList. Fast and works without extra API calls -- leave this on."
+        )
         self.hato_enabled = QCheckBox("Hato API (recommended, anime + manga)", group)
+        self.hato_enabled.setToolTip(
+            "An online lookup service that helps match both anime and manga titles.\n"
+            "Leave this on for the best match rate."
+        )
         self.arm_enabled = QCheckBox("ARM API fallback (opt-in, anime only)", group)
+        self.arm_enabled.setToolTip(
+            "An extra online lookup used only when the other methods above can't\n"
+            "match an anime title. Optional."
+        )
         self.jikan_enabled = QCheckBox("Jikan API (opt-in, manga + MAL favorites)", group)
+        self.jikan_enabled.setToolTip(
+            "An unofficial MyAnimeList data source used to help match manga titles\n"
+            "and to read your MAL favorites. Required if you want to sync favorites."
+        )
         self.favorites_enabled = QCheckBox("Sync favorites", group)
+        self.favorites_enabled.setToolTip(
+            "Also keep your favorited anime/manga in sync between AniList and\n"
+            "MyAnimeList. Turns on the Jikan API automatically."
+        )
         for box in (
             self.offline_db_enabled, self.hato_enabled, self.arm_enabled,
             self.jikan_enabled, self.favorites_enabled,
@@ -110,14 +142,18 @@ class SettingsTab(QWidget):
         return group
 
     def _build_watch_group(self) -> QGroupBox:
-        group = QGroupBox("Watch Schedule (used by the Watch tab; leave both blank to disable)", self)
+        group = QGroupBox("Auto-Sync Schedule (used by the Auto-Sync page; leave both blank to disable)", self)
         form = QFormLayout(group)
         self.watch_interval = QLineEdit(group)
         self.watch_interval.setPlaceholderText("e.g. 6h (1h-168h)")
+        self.watch_interval.setToolTip("How often to automatically sync, e.g. \"6h\" for every 6 hours.")
         self.watch_schedule = QLineEdit(group)
         self.watch_schedule.setPlaceholderText("e.g. 0 */6 * * * (cron, 5 fields)")
-        form.addRow("Interval", self.watch_interval)
-        form.addRow("Cron schedule", self.watch_schedule)
+        self.watch_schedule.setToolTip(
+            "Advanced: a cron expression instead of a simple interval.\nLeave blank unless you need specific times."
+        )
+        form.addRow("Sync every", cap_width(self.watch_interval, _FIELD_WIDTH))
+        form.addRow("Cron schedule (advanced)", cap_width(self.watch_schedule, _FIELD_WIDTH))
         return group
 
     # -- load/save -------------------------------------------------------

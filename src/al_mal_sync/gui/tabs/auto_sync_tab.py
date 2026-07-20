@@ -1,13 +1,14 @@
-"""Watch tab: mirrors the CLI `watch` command's interval/cron scheduling,
-but as a non-blocking QTimer loop instead of a blocking sleep loop, so the
-GUI stays responsive. Reuses the Sync tab's own run button for the actual
-work each tick -- same options, same progress bar/log panel/results view,
-no separate copy of the sync-options form or worker-thread wiring.
+"""Auto-Sync page (formerly "Watch" -- renamed because that name told
+casual users nothing about what it does): runs the Sync page's own sync on a
+repeating schedule as a non-blocking QTimer loop, so the GUI stays
+responsive. Reuses the Sync tab's own run button for the actual work each
+tick -- same options, same progress bar/log panel/results view, no separate
+copy of the sync-options form or worker-thread wiring.
 
-The schedule itself (interval or cron) is configured on the Settings tab
+The schedule itself (interval or cron) is configured on the Settings page
 (config.watch.interval/schedule), not here -- having two editable schedule
-fields in two tabs would just invite "which one actually wins" confusion.
-This tab only starts/stops the QTimer loop against whatever's configured.
+fields in two places would just invite "which one actually wins" confusion.
+This page only starts/stops the QTimer loop against whatever's configured.
 """
 
 from __future__ import annotations
@@ -17,18 +18,22 @@ from typing import Callable
 
 from croniter import CroniterError, croniter
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGroupBox, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ...config import Config, ConfigError
+from ..widgets import apply_page_layout, left_aligned
 from .sync_tab import SyncTab
 
+_BUTTON_WIDTH = 220
+
 _IDLE_MESSAGE = (
-    "Not watching. Runs only while this window is open -- for unattended "
-    "background scheduling, use `al-mal-sync watch` on the command line or Docker."
+    "Not running automatically. This only runs while this window stays open -- "
+    "for unattended background scheduling instead, use `al-mal-sync watch` on "
+    "the command line or Docker."
 )
 
 
-class WatchTab(QWidget):
+class AutoSyncTab(QWidget):
     def __init__(
         self,
         get_config: Callable[[], Config],
@@ -49,34 +54,54 @@ class WatchTab(QWidget):
         self._countdown_timer.timeout.connect(self._update_status_label)
 
         layout = QVBoxLayout(self)
+        apply_page_layout(layout)
+        title = QLabel("Auto-Sync", self)
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        subtitle = QLabel(
+            "Automatically runs a sync for you on a schedule, as long as this app is open.", self
+        )
+        subtitle.setObjectName("pageSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        group = QGroupBox("Schedule", self)
+        group_layout = QVBoxLayout(group)
 
         self.schedule_label = QLabel(self)
         self.schedule_label.setWordWrap(True)
-        layout.addWidget(self.schedule_label)
+        self.schedule_label.setToolTip(
+            "Set in Settings -> Watch Schedule. Either a plain interval (e.g. every 6\n"
+            "hours) or, for advanced users, a cron expression."
+        )
+        group_layout.addWidget(self.schedule_label)
 
-        self.toggle_button = QPushButton("Start Watching", self)
+        self.toggle_button = QPushButton("Start Auto-Sync", self)
+        self.toggle_button.setObjectName("primaryButton")
         self.toggle_button.clicked.connect(self._on_toggle_clicked)
-        layout.addWidget(self.toggle_button)
+        group_layout.addLayout(left_aligned(self.toggle_button, _BUTTON_WIDTH))
 
         self.status_label = QLabel(_IDLE_MESSAGE, self)
+        self.status_label.setObjectName("muted")
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
+        group_layout.addWidget(self.status_label)
+
+        layout.addWidget(group)
         layout.addStretch(1)
 
         self.refresh_schedule_display()
 
     def refresh_schedule_display(self) -> None:
-        """Called after Settings saves, so this tab reflects the current
+        """Called after Settings saves, so this page reflects the current
         config.watch value without needing its own copy of it."""
         watch = self._get_config().watch
         if watch.schedule:
-            self.schedule_label.setText(f"Schedule: cron {watch.schedule!r} (set in Settings)")
+            self.schedule_label.setText(f"Runs on a custom cron schedule ({watch.schedule!r}).")
         elif watch.interval:
-            self.schedule_label.setText(f"Schedule: every {watch.interval} (set in Settings)")
+            self.schedule_label.setText(f"Runs automatically every {watch.interval}.")
         else:
             self.schedule_label.setText(
-                "No schedule configured -- set a watch interval or cron schedule "
-                "in the Settings tab first."
+                "No schedule set yet -- set how often to sync in the Settings page first."
             )
 
     def _is_watching(self) -> bool:
@@ -92,10 +117,10 @@ class WatchTab(QWidget):
         try:
             self._get_config().watch.validate()
         except ConfigError as exc:
-            self.status_label.setText(f"Cannot start: {exc}")
+            self.status_label.setText(f"Can't start: {exc}")
             return
 
-        self.toggle_button.setText("Stop Watching")
+        self.toggle_button.setText("Stop Auto-Sync")
         self._countdown_timer.start()
         self._schedule_next_run()
 
@@ -103,7 +128,7 @@ class WatchTab(QWidget):
         self._fire_timer.stop()
         self._countdown_timer.stop()
         self._next_run = None
-        self.toggle_button.setText("Start Watching")
+        self.toggle_button.setText("Start Auto-Sync")
         self.status_label.setText(_IDLE_MESSAGE)
 
     def _schedule_next_run(self) -> None:
@@ -119,7 +144,7 @@ class WatchTab(QWidget):
         else:
             interval = watch.get_interval()
             if interval is None:
-                self.status_label.setText("No schedule configured.")
+                self.status_label.setText("No schedule set.")
                 self._stop_watching()
                 return
             self._next_run = datetime.now() + interval
@@ -129,9 +154,9 @@ class WatchTab(QWidget):
         self._update_status_label()
 
     def _on_timer_fired(self) -> None:
-        # If a previous watch-triggered (or manually started) sync is still
-        # running, SyncTab's own dedup guard silently skips this click --
-        # this tick is just missed, matching "don't overlap syncs" rather
+        # If a previous auto-sync-triggered (or manually started) sync is
+        # still running, SyncTab's own dedup guard silently skips this click
+        # -- this tick is just missed, matching "don't overlap syncs" rather
         # than queuing up a backlog of runs.
         self._sync_tab.run_button.click()
         self._schedule_next_run()
@@ -141,6 +166,6 @@ class WatchTab(QWidget):
             return
         remaining = max(0, int((self._next_run - datetime.now()).total_seconds()))
         self.status_label.setText(
-            f"Watching. Next sync at {self._next_run.isoformat(timespec='seconds')} "
-            f"(in {remaining}s). Runs only while this window is open."
+            f"Running. Next sync at {self._next_run.strftime('%H:%M:%S')} "
+            f"(in {remaining}s). Only while this window stays open."
         )
