@@ -232,6 +232,14 @@ query ($name: String) {
 }
 """
 
+VIEWER_QUERY = """
+query {
+    Viewer {
+        name
+    }
+}
+"""
+
 
 class AniListAPIError(Exception):
     """Raised for AniList GraphQL request/response failures."""
@@ -396,6 +404,13 @@ class AniListClient:
             raise AniListAPIError(f"AniList GraphQL error: {_format_graphql_errors(payload)}")
 
         return payload.get("data") or {}
+
+    def get_authenticated_username(self) -> str:
+        """The AniList username the current OAuth token belongs to -- used to
+        auto-fill Settings' username field right after login, so a user
+        never has to look up and type their own username by hand."""
+        data = self._post(VIEWER_QUERY, {})
+        return str(data["Viewer"]["name"])
 
     def get_user_anime_list(self) -> list[AniListListEntry]:
         data = self._post(USER_ANIME_LIST_QUERY, {"username": self.username, "type": "ANIME"})

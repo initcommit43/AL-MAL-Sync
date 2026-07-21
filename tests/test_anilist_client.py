@@ -102,6 +102,17 @@ class TestGetUserAnimeList:
         assert entries[0].completed_at is None
 
 
+class TestGetAuthenticatedUsername:
+    def test_returns_viewer_name(self) -> None:
+        payload = {"data": {"Viewer": {"name": "SomeUser"}}}
+        client, session = _make_client([_FakeResponse(200, payload)])
+
+        username = client.get_authenticated_username()
+
+        assert username == "SomeUser"
+        assert session.calls[0][1]["json"]["variables"] == {}
+
+
 class TestUpdateAnimeEntry:
     def test_omits_dates_when_none(self) -> None:
         client, session = _make_client([_FakeResponse(200, {"data": {}})])

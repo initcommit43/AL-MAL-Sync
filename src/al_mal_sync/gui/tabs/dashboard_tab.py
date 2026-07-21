@@ -31,7 +31,7 @@ from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
-from ..widgets import StatCard, apply_page_layout, left_aligned
+from ..widgets import Pill, StatCard, apply_page_layout, left_aligned
 from ..workers import run_in_thread
 
 _BUTTON_WIDTH = 220
@@ -106,9 +106,11 @@ class DashboardTab(QWidget):
         group = QGroupBox("Accounts", self)
         row = QHBoxLayout(group)
 
-        self.anilist_status_label = QLabel(self)
+        self.anilist_status_label = QLabel("AniList: checking...", self)
+        self.anilist_status_label.setWordWrap(True)
         row.addWidget(self.anilist_status_label, 1)
-        self.myanimelist_status_label = QLabel(self)
+        self.myanimelist_status_label = QLabel("MyAnimeList: checking...", self)
+        self.myanimelist_status_label.setWordWrap(True)
         row.addWidget(self.myanimelist_status_label, 1)
 
         self.go_to_login_button = QPushButton("Go to Login", group)
@@ -125,6 +127,8 @@ class DashboardTab(QWidget):
         layout.addWidget(self.last_sync_label)
 
         attention_row = QHBoxLayout()
+        self.attention_badge = Pill("0", "success", group)
+        attention_row.addWidget(self.attention_badge)
         self.needs_attention_label = QLabel("", group)
         attention_row.addWidget(self.needs_attention_label, 1)
         self.go_to_mapping_issues_button = QPushButton("Review", group)
@@ -186,6 +190,7 @@ class DashboardTab(QWidget):
     def _refresh_needs_attention(self) -> None:
         state = load_unmapped_state(self._get_config().resolved_unmapped_state_path)
         count = len(state.entries)
+        self.attention_badge.set_text_and_kind(str(count), "success" if count == 0 else "warning")
         if count == 0:
             self.needs_attention_label.setText("Nothing needs your attention.")
             self.go_to_mapping_issues_button.setVisible(False)
@@ -232,7 +237,9 @@ class DashboardTab(QWidget):
         if anilist_count is None or mal_count is None:
             card.set_value("--")
             card.set_subtext("Log in to both accounts to see this.")
+            card.hide_breakdown()
             return
         card.set_value(f"AniList {anilist_count}  ·  MAL {mal_count}")
         text, color = _diff_text(anilist_count, mal_count)
         card.set_subtext(text, color=color)
+        card.set_breakdown(anilist_count, mal_count)

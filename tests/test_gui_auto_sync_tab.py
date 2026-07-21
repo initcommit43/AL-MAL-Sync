@@ -59,7 +59,7 @@ class TestAutoSyncTab:
 
         assert "Can't start" in tab.status_label.text()
         assert tab.toggle_button.text() == "Start Auto-Sync"
-        assert tab._is_watching() is False
+        assert tab.is_watching is False
 
     def test_start_with_valid_interval_toggles_button_and_shows_countdown(
         self, qt_app: QApplication
@@ -72,7 +72,7 @@ class TestAutoSyncTab:
             tab.toggle_button.click()
 
             assert tab.toggle_button.text() == "Stop Auto-Sync"
-            assert tab._is_watching() is True
+            assert tab.is_watching is True
             assert "Next sync at" in tab.status_label.text()
         finally:
             tab._stop_watching()
@@ -86,8 +86,8 @@ class TestAutoSyncTab:
         tab.toggle_button.click()  # second click while watching = stop
 
         assert tab.toggle_button.text() == "Start Auto-Sync"
-        assert tab._is_watching() is False
-        assert "Not running automatically" in tab.status_label.text()
+        assert tab.is_watching is False
+        assert "Not running" in tab.status_label.text()
 
     def test_timer_fire_clicks_sync_tab_run_button_and_reschedules(
         self, qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
@@ -106,7 +106,7 @@ class TestAutoSyncTab:
             tab.toggle_button.click()
             assert wait_until(qt_app, lambda: fake_sync_tab.click_count >= 1, timeout_ms=3000)
             # Rescheduled for another tick, not left stopped after firing once.
-            assert tab._is_watching() is True
+            assert tab.is_watching is True
         finally:
             tab._stop_watching()
 

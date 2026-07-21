@@ -91,6 +91,7 @@ class MappingIssuesTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setAlternatingRowColors(True)
         group_layout.addWidget(self.table)
 
         buttons = QHBoxLayout()
@@ -232,6 +233,7 @@ class MappingIssuesTab(QWidget):
         self.manual_table.setColumnCount(3)
         self.manual_table.setHorizontalHeaderLabels(["AniList ID", "MAL ID", "Comment"])
         self.manual_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.manual_table.setAlternatingRowColors(True)
         layout.addWidget(self.manual_table)
 
         manual_buttons = QHBoxLayout()
@@ -249,6 +251,7 @@ class MappingIssuesTab(QWidget):
         self.ignore_table.setColumnCount(2)
         self.ignore_table.setHorizontalHeaderLabels(["Type", "Value"])
         self.ignore_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.ignore_table.setAlternatingRowColors(True)
         layout.addWidget(self.ignore_table)
 
         ignore_buttons = QHBoxLayout()

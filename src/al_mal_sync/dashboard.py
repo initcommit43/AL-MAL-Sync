@@ -38,7 +38,10 @@ def _fetch_anilist_status(oauth: OAuth, config: Config) -> PlatformStatus:
     if oauth.needs_init:
         return PlatformStatus(authenticated=False)
     if not config.anilist.username:
-        return PlatformStatus(authenticated=True, error="no AniList username set -- check Settings")
+        return PlatformStatus(
+            authenticated=True,
+            error="no AniList username set -- use \"Fetch my username\" on the Login page, or set it in Settings",
+        )
     try:
         client = AniListClient(
             oauth, config.anilist.username, http_timeout=config.get_http_timeout().total_seconds()
@@ -54,7 +57,13 @@ def _fetch_myanimelist_status(oauth: OAuth, config: Config) -> PlatformStatus:
     if oauth.needs_init:
         return PlatformStatus(authenticated=False)
     if not config.myanimelist.username:
-        return PlatformStatus(authenticated=True, error="no MyAnimeList username set -- check Settings")
+        return PlatformStatus(
+            authenticated=True,
+            error=(
+                "no MyAnimeList username set -- use \"Fetch my username\" on the Login page, "
+                "or set it in Settings"
+            ),
+        )
     try:
         client = MyAnimeListClient(
             oauth, config.myanimelist.username, http_timeout=config.get_http_timeout().total_seconds()

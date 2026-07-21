@@ -9,6 +9,15 @@ The schedule itself (interval or cron) is configured on the Settings page
 (config.watch.interval/schedule), not here -- having two editable schedule
 fields in two places would just invite "which one actually wins" confusion.
 This page only starts/stops the QTimer loop against whatever's configured.
+
+The QTimer loop needs *some* process alive to host it, but that no longer
+means the window itself has to stay open and in focus: main_window.py's
+close button minimizes to a system tray icon instead of exiting whenever
+`is_watching` is true, so starting this and closing the window is a real
+"run this in the background" workflow, not just a same-session convenience.
+Truly unattended scheduling with no GUI process running at all (e.g. on a
+headless server) still needs the CLI's `watch` command or Docker -- that's
+a different thing this page doesn't try to replace.
 """
 
 from __future__ import annotations
@@ -27,9 +36,11 @@ from .sync_tab import SyncTab
 _BUTTON_WIDTH = 220
 
 _IDLE_MESSAGE = (
-    "Not running automatically. This only runs while this window stays open -- "
-    "for unattended background scheduling instead, use `al-mal-sync watch` on "
-    "the command line or Docker."
+    "Not running. Once started, you can close this window -- Auto-Sync keeps "
+    "running in the background (look for the tray icon); quit from there to "
+    "stop it. For unattended scheduling with no GUI running at all (e.g. a "
+    "headless server), use `al-mal-sync watch` on the command line or Docker "
+    "instead."
 )
 
 
@@ -59,7 +70,9 @@ class AutoSyncTab(QWidget):
         title.setObjectName("pageTitle")
         layout.addWidget(title)
         subtitle = QLabel(
-            "Automatically runs a sync for you on a schedule, as long as this app is open.", self
+            "Automatically runs a sync for you on a schedule. Start it, then close the "
+            "window -- it keeps running in the background.",
+            self,
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -104,11 +117,15 @@ class AutoSyncTab(QWidget):
                 "No schedule set yet -- set how often to sync in the Settings page first."
             )
 
-    def _is_watching(self) -> bool:
+    @property
+    def is_watching(self) -> bool:
+        """Whether the QTimer loop is currently active -- read by
+        main_window.py's closeEvent to decide whether closing the window
+        should minimize to the tray instead of quitting."""
         return self._fire_timer.isActive() or self._countdown_timer.isActive()
 
     def _on_toggle_clicked(self) -> None:
-        if self._is_watching():
+        if self.is_watching:
             self._stop_watching()
         else:
             self._start_watching()
@@ -166,6 +183,6 @@ class AutoSyncTab(QWidget):
             return
         remaining = max(0, int((self._next_run - datetime.now()).total_seconds()))
         self.status_label.setText(
-            f"Running. Next sync at {self._next_run.strftime('%H:%M:%S')} "
-            f"(in {remaining}s). Only while this window stays open."
+            f"Running. Next sync at {self._next_run.strftime('%H:%M:%S')} (in {remaining}s). "
+            "You can close this window -- it'll keep running in the background."
         )

@@ -114,6 +114,16 @@ class TestGetUserAnimeList:
         assert entry.status.num_episodes_watched == 3
 
 
+class TestGetAuthenticatedUsername:
+    def test_returns_name_from_users_me(self) -> None:
+        client, session = _make_client([_FakeResponse(200, {"id": 1, "name": "SomeUser"})])
+
+        username = client.get_authenticated_username()
+
+        assert username == "SomeUser"
+        assert session.calls[0][1] == "https://api.myanimelist.net/v2/users/@me"
+
+
 class TestUpdateAnime:
     def test_sends_expected_form_fields(self) -> None:
         response = _FakeResponse(200, {"status": "watching", "score": 8})

@@ -199,6 +199,48 @@ class TestLoadConfigFromFile:
             load_config(config_path)
 
 
+class TestLoadConfigValidateFalse:
+    """validate=False is what the GUI uses (see main_window.py's
+    _load_initial_config) so a partially-filled config.yaml -- e.g. just a
+    username saved by the Login page's "Fetch my username" button, with no
+    client_id yet -- survives a restart instead of being discarded back to a
+    blank Config() by the CLI's all-required-fields gate."""
+
+    def test_partial_yaml_does_not_raise_and_keeps_what_was_there(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for key in REQUIRED_ENV:
+            monkeypatch.delenv(key, raising=False)
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            "anilist:\n  username: fetched_user\n", encoding="utf-8"
+        )
+
+        cfg = load_config(config_path, validate=False)
+
+        assert cfg.anilist.username == "fetched_user"
+        assert cfg.anilist.client_id == ""
+
+    def test_missing_file_and_missing_env_returns_blank_instead_of_raising(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for key in REQUIRED_ENV:
+            monkeypatch.delenv(key, raising=False)
+
+        cfg = load_config(tmp_path / "nonexistent.yaml", validate=False)
+
+        assert cfg.anilist.username == ""
+
+    def test_invalid_yaml_still_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("{not: valid: yaml: [", encoding="utf-8")
+
+        with pytest.raises(ConfigError, match="failed to parse"):
+            load_config(config_path, validate=False)
+
+
 _ALL_CONFIG_ENV_KEYS = [
     "OAUTH_PORT", "PORT", "OAUTH_REDIRECT_URI",
     "ANILIST_CLIENT_ID", "ANILIST_CLIENT_SECRET", "CLIENT_SECRET_ANILIST", "ANILIST_USERNAME",

@@ -1,56 +1,88 @@
 """Main application window: a left sidebar (Dashboard first, Settings last)
 driving a stacked page area -- Dashboard, Sync, Login, Auto-Sync, Mapping
-Issues, Logs, Settings."""
+Issues, Settings. Logs and the Help menu both used to be their own top-level
+things (a separate Logs page, a floating menu-bar item); Logs is now folded
+into the bottom of the Sync page (see sync_tab.py) and Help lives in
+Settings' "About" section -- both were only ever relevant *from* another
+page, not independent destinations of their own.
+
+Also owns the system tray icon: closing the window while Auto-Sync is
+running hides it instead of quitting, so Auto-Sync keeps ticking in the
+background without the window needing to stay open -- the whole point of
+having a GUI toggle for it, rather than that toggle being effectively
+decorative and pointing people at the CLI/Docker for anything unattended.
+"""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QCloseEvent, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QMessageBox,
+    QMenu,
     QStackedWidget,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
 
-from ..config import Config, ConfigError, app_config_dir, default_config_path, load_config
+from ..config import Config, ConfigError, default_config_path, load_config
 from . import log_bridge
 from .tabs.auto_sync_tab import AutoSyncTab
 from .tabs.dashboard_tab import DashboardTab
-from .tabs.logs_tab import LogsTab
 from .tabs.login_tab import LoginTab
 from .tabs.mapping_issues_tab import MappingIssuesTab
 from .tabs.settings_tab import SettingsTab
 from .tabs.sync_tab import SyncTab
+from .theme import ACCENT
 
 WINDOW_TITLE = "AL-MAL-Sync"
 SIDEBAR_WIDTH = 200
-
-_ABOUT_TEXT = (
-    "<b>AL-MAL-Sync</b><br>"
-    "Bidirectional sync between AniList and MyAnimeList.<br><br>"
-    "Ported from "
-    '<a href="https://github.com/bigspawn/anilist-mal-sync">bigspawn/anilist-mal-sync</a> (Go).'
-    "<br><br>"
-    "Id-mapping data from the "
-    '<a href="https://github.com/manami-project/anime-offline-database">anime-offline-database</a>, '
-    "Hato, Jikan, and ARM."
-)
+_TRAY_NOTIFICATION_MS = 6000
 
 
 def _load_initial_config(path: str) -> Config:
     """Missing/incomplete config.yaml is not fatal for the GUI the way it is
     for the CLI -- first-run users have nothing yet, and should land on the
-    Settings page to fill it in rather than seeing a crash."""
+    Settings page to fill it in rather than seeing a crash.
+
+    validate=False is load-bearing, not cosmetic: without it, load_config()
+    raises (and this falls back to a blank Config()) whenever even one
+    unrelated required field is still empty -- silently discarding a
+    perfectly valid, already-saved username (or client ID, or anything else
+    filled in so far) back to nothing on every single restart. The CLI needs
+    that strict gate; the GUI must tolerate and preserve incremental
+    progress instead of erasing it.
+    """
     try:
-        return load_config(path)
+        return load_config(path, validate=False)
     except ConfigError:
         return Config()
+
+
+def _build_app_icon() -> QIcon:
+    """A plain generated monogram (no bundled icon asset) -- an accent-blue
+    circle with "AM" in it, used as both the window icon and the tray icon
+    so the tray entry is visually traceable back to this app."""
+    size = 64
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(ACCENT))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(QRectF(0, 0, size, size))
+    painter.setPen(QColor("#0b1622"))
+    font = QFont("Segoe UI", 22, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.drawText(QRectF(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, "AM")
+    painter.end()
+    return QIcon(pixmap)
 
 
 class MainWindow(QMainWindow):
@@ -58,6 +90,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(1000, 650)
+        self._app_icon = _build_app_icon()
+        self.setWindowIcon(self._app_icon)
+        # Set only by the tray menu's Quit action -- lets closeEvent tell
+        # "the user asked to quit" apart from "the window's X button was
+        # clicked while Auto-Sync is running", which should minimize to the
+        # tray instead of actually exiting.
+        self._force_quit = False
 
         # Installed here (not in app.py) so it exists for the lifetime of the
         # main window; the Sync tab's live log panel and the Logs tab both
@@ -69,10 +108,9 @@ class MainWindow(QMainWindow):
 
         self.dashboard_tab = DashboardTab(self.get_config)
         self.sync_tab = SyncTab(self.get_config, self.log_handler)
-        self.login_tab = LoginTab(self.get_config)
+        self.login_tab = LoginTab(self.get_config, self.config_path)
         self.auto_sync_tab = AutoSyncTab(self.get_config, self.sync_tab)
         self.mapping_issues_tab = MappingIssuesTab(self.get_config)
-        self.logs_tab = LogsTab(self.log_handler)
         self.settings_tab = SettingsTab(self.get_config, self.config_path)
 
         # Dashboard-first, Settings-last: the order a casual user should meet
@@ -83,7 +121,6 @@ class MainWindow(QMainWindow):
             ("login", "Login", self.login_tab),
             ("auto_sync", "Auto-Sync", self.auto_sync_tab),
             ("mapping_issues", "Mapping Issues", self.mapping_issues_tab),
-            ("logs", "Logs", self.logs_tab),
             ("settings", "Settings", self.settings_tab),
         ]
         self._page_index_by_key = {key: i for i, (key, _label, _widget) in enumerate(self._pages)}
@@ -111,7 +148,62 @@ class MainWindow(QMainWindow):
         self.sync_tab.sync_finished.connect(self.dashboard_tab.reload)
         self.dashboard_tab.navigate_requested.connect(self._navigate_to)
 
-        self._build_menu()
+        self.tray_icon = self._build_tray_icon()
+
+    def _build_tray_icon(self) -> QSystemTrayIcon | None:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return None
+
+        # Kept as an instance attribute (self.tray_menu), same reasoning as
+        # main_window.py's old _build_menu docstring about QMenu/QAction
+        # wrappers being collected without a surviving Python reference.
+        self.tray_menu = QMenu(self)
+        self.tray_show_action = self.tray_menu.addAction("Show AL-MAL-Sync")
+        self.tray_show_action.triggered.connect(self._show_from_tray)
+        self.tray_quit_action = self.tray_menu.addAction("Quit")
+        self.tray_quit_action.triggered.connect(self._quit_from_tray)
+
+        tray_icon = QSystemTrayIcon(self._app_icon, self)
+        tray_icon.setToolTip(WINDOW_TITLE)
+        tray_icon.setContextMenu(self.tray_menu)
+        tray_icon.activated.connect(self._on_tray_activated)
+        tray_icon.show()
+        return tray_icon
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self._show_from_tray()
+
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self) -> None:
+        self._force_quit = True
+        QApplication.instance().quit()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        # Auto-Sync only actually runs while some process is alive to host
+        # its QTimer -- closing the window used to mean either leaving it
+        # open forever or losing the schedule entirely. Minimizing to the
+        # tray instead means the GUI toggle is a real substitute for the
+        # CLI's `watch` command, not just a demo of it.
+        if self.tray_icon is not None and not self._force_quit and self.auto_sync_tab.is_watching:
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage(
+                WINDOW_TITLE,
+                "Still running in the background -- Auto-Sync keeps going. "
+                "Right-click the tray icon to reopen or quit.",
+                QSystemTrayIcon.MessageIcon.Information,
+                _TRAY_NOTIFICATION_MS,
+            )
+            return
+        event.accept()
 
     def _build_central_widget(self) -> QWidget:
         sidebar_container = QWidget(self)
@@ -153,25 +245,3 @@ class MainWindow(QMainWindow):
         reload = getattr(widget, "reload", None)
         if callable(reload):
             reload()
-
-    def _build_menu(self) -> None:
-        # Kept as instance attributes, not locals -- a QMenu/QAction with no
-        # Python-side reference has been observed to have its wrapper
-        # collected (and the underlying widget along with it) even though
-        # it's parented to the menu bar/window, the same class of dangling-
-        # wrapper issue as the per-row cell widgets in mapping_issues_tab.py.
-        self.help_menu = self.menuBar().addMenu("Help")
-
-        self.open_config_action = QAction("Open Config Folder", self)
-        self.open_config_action.triggered.connect(self._open_config_folder)
-        self.help_menu.addAction(self.open_config_action)
-
-        self.about_action = QAction("About", self)
-        self.about_action.triggered.connect(self._show_about)
-        self.help_menu.addAction(self.about_action)
-
-    def _open_config_folder(self) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(app_config_dir())))
-
-    def _show_about(self) -> None:
-        QMessageBox.about(self, "About AL-MAL-Sync", _ABOUT_TEXT)

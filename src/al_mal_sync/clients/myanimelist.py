@@ -252,6 +252,13 @@ class MyAnimeListClient:
         except ValueError as exc:
             raise MyAnimeListAPIError(f"invalid JSON response: {exc}") from exc
 
+    def get_authenticated_username(self) -> str:
+        """The MyAnimeList username the current OAuth token belongs to --
+        used to auto-fill Settings' username field right after login, so a
+        user never has to look up and type their own username by hand."""
+        data = self._get("users/@me", params={"fields": "name"})
+        return str(data["name"])
+
     def get_user_anime_list(self) -> list[MALUserAnimeEntry]:
         entries: list[MALUserAnimeEntry] = []
         offset = 0

@@ -6,6 +6,18 @@ who needs it. Runs sync.runner.run_sync() on a worker thread with a live
 progress bar and log panel, and renders the resulting SyncStatistics/
 SyncReport when done -- reusing the same structured objects and text
 renderers the CLI uses, not a hand-rolled summary.
+
+The progress bar, current-run log, and results panel all start hidden --
+before a first run, they'd otherwise sit on the page as three empty boxes
+with nothing in them, which reads as broken/unfinished rather than "nothing
+to show yet". They appear only once there's something to show: the first
+two when a run starts, results once it finishes.
+
+The full application log (formerly its own "Logs" sidebar page) lives here
+too now, folded into a collapsed "Full Application Log" section at the
+bottom -- it's a Sync-adjacent debugging tool, not a destination anyone
+navigates to on its own, so a whole top-level page for it competed with the
+pages people actually go to directly.
 """
 
 from __future__ import annotations
@@ -34,6 +46,7 @@ from ...sync.statistics import SyncStatistics, format_statistics_table
 from ..log_bridge import QtLogHandler
 from ..widgets import CollapsibleSection, apply_page_layout, cap_width, left_aligned
 from ..workers import run_in_thread
+from .logs_tab import LogsTab
 
 _FIELD_WIDTH = 340
 _BUTTON_WIDTH = 220
@@ -87,19 +100,35 @@ class SyncTab(QWidget):
 
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setRange(0, 1)
+        self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
         self.kind_label = QLabel("", self)
         self.kind_label.setObjectName("muted")
+        self.kind_label.setVisible(False)
         layout.addWidget(self.kind_label)
 
         self.log_view = QPlainTextEdit(self)
         self.log_view.setReadOnly(True)
+        self.log_view.setVisible(False)
         layout.addWidget(self.log_view, 1)
 
         self.results_view = QPlainTextEdit(self)
         self.results_view.setReadOnly(True)
+        self.results_view.setVisible(False)
         layout.addWidget(self.results_view, 1)
+
+        self.full_log_tab = LogsTab(log_handler, self)
+        layout.addWidget(CollapsibleSection("Full Application Log", self.full_log_tab, collapsed=True))
+
+        # Before a first run, every widget above (log_view/results_view
+        # hidden, nothing else Expanding) is a fixed-height Preferred-policy
+        # widget -- with nothing here to absorb leftover vertical space, Qt
+        # spreads it evenly *between* those widgets instead of leaving it at
+        # the bottom, which reads as broken layout rather than an empty
+        # state. This trailing stretch is that sink, same as every other
+        # page in the app already ends with.
+        layout.addStretch(1)
 
         self.progress_updated.connect(self._update_progress_bar)
         self.kind_started.connect(self._update_kind_label)
@@ -199,9 +228,13 @@ class SyncTab(QWidget):
 
         self.run_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)  # indeterminate until the first on_progress call
+        self.progress_bar.setVisible(True)
         self.kind_label.setText("Starting...")
+        self.kind_label.setVisible(True)
         self.log_view.clear()
+        self.log_view.setVisible(True)
         self.results_view.clear()
+        self.results_view.setVisible(False)
 
         self._sync_thread, self._sync_worker = run_in_thread(
             self,
@@ -252,6 +285,7 @@ class SyncTab(QWidget):
         stats_text = format_statistics_table(SyncStatistics.from_outcomes(outcomes))
         report_text = format_report(build_report(outcomes, favorites_outcomes))
         self.results_view.setPlainText(f"{stats_text}\n\n{report_text}")
+        self.results_view.setVisible(True)
         self.sync_finished.emit()
 
     def _on_sync_error(self, message: str) -> None:
@@ -262,4 +296,5 @@ class SyncTab(QWidget):
         self.progress_bar.setValue(0)
         self.kind_label.setText("Sync failed.")
         self.results_view.setPlainText(f"Error: {message}")
+        self.results_view.setVisible(True)
         self.sync_finished.emit()

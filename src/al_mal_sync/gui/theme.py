@@ -1,5 +1,15 @@
 """Design tokens + one global QSS stylesheet for the whole app.
 
+Palette and component language lifted from design.md (an AniList-dashboard-
+derived spec): a near-black navy background, a single bright blue accent
+reserved for interactive elements/links, low-saturation surfaces, and
+separation via background-shade contrast rather than visible borders --
+cards, sidebar rows, and table headers all read as "a slightly lighter slab
+of navy" instead of a boxed-in panel. Genre-tag colors from the spec are
+repurposed here as semantic status colors and as the AniList/MyAnimeList
+brand-color pair used to visually tell the two platforms apart wherever both
+show up side by side (dashboard stat cards, source-breakdown bars).
+
 The design skills installed under .claude/skills/ (design-system, ui-styling,
 web-design-guidelines) are all React/Tailwind/CSS-variable flavored and don't
 apply directly to PySide6 -- there's no CSS custom-property system, no
@@ -10,57 +20,65 @@ constants rather than hardcoded per-widget -- the same "tokens, not magic
 values" discipline, expressed as Python module constants feeding one QSS
 string instead of CSS variables.
 
-A single polished light theme (dark sidebar, light content), no dark-mode
-toggle -- not requested, and Qt has no equivalent of prefers-color-scheme to
-key off automatically.
+A single dark theme, no light-mode toggle -- not requested, and Qt has no
+equivalent of prefers-color-scheme to key off automatically.
 """
 
 from __future__ import annotations
 
-# -- primitives ------------------------------------------------------------
+# -- primitives (design.md palette) -----------------------------------------
 
-_INK_900 = "#1A1D29"
-_INK_700 = "#3A3F52"
-_INK_500 = "#667085"
-_INK_300 = "#98A2B3"
-_INK_100 = "#E4E7EC"
-_INK_050 = "#F7F8FA"
-_WHITE = "#FFFFFF"
+_BG_PRIMARY = "#0b1622"
+_BG_SURFACE = "#12202f"
+_BG_SURFACE_ALT = "#1a2b3d"
+_BG_SURFACE_HOVER = "#213a4f"
 
-_INDIGO_600 = "#4F46E5"
-_INDIGO_700 = "#4338CA"
-_INDIGO_100 = "#E0E7FF"
+_TEXT_PRIMARY = "#e6edf3"
+_TEXT_SECONDARY = "#8b9bab"
 
-_GREEN_600 = "#12B76A"
-_GREEN_100 = "#D1FADF"
-_AMBER_600 = "#F79009"
-_RED_600 = "#F04438"
-_RED_100 = "#FEE4E2"
+_ACCENT_BLUE = "#3db4f2"
+_ACCENT_BLUE_HOVER = "#2f9bd6"
+_ACCENT_BLUE_SOFT = "#1d3a4f"
+_ACCENT_CYAN = "#4fc3d9"
+
+_TAG_ACTION_GREEN = "#4caf50"
+_TAG_DRAMA_RED = "#f28ba3"
+_TAG_FANTASY_AMBER = "#f2a13d"
+_BADGE_DISCUSSION_PURPLE = "#7e5bef"
+
+_WHITE = "#ffffff"
 
 # -- semantic tokens ---------------------------------------------------------
 
-SIDEBAR_BG = _INK_900
-SIDEBAR_TEXT = _INK_300
+PAGE_BG = _BG_PRIMARY
+SURFACE = _BG_SURFACE
+SURFACE_ALT = _BG_SURFACE_ALT
+SURFACE_HOVER = _BG_SURFACE_HOVER
+DIVIDER = _BG_SURFACE_ALT
+
+SIDEBAR_BG = _BG_SURFACE_ALT
+SIDEBAR_TEXT = _TEXT_SECONDARY
 SIDEBAR_TEXT_ACTIVE = _WHITE
 
-PAGE_BG = _INK_050
-SURFACE = _WHITE
-BORDER = _INK_100
+TEXT_PRIMARY = _TEXT_PRIMARY
+TEXT_SECONDARY = _TEXT_SECONDARY
 
-TEXT_PRIMARY = _INK_900
-TEXT_SECONDARY = _INK_500
+ACCENT = _ACCENT_BLUE
+ACCENT_HOVER = _ACCENT_BLUE_HOVER
+ACCENT_SOFT = _ACCENT_BLUE_SOFT
+ACCENT_CYAN = _ACCENT_CYAN
 
-ACCENT = _INDIGO_600
-ACCENT_HOVER = _INDIGO_700
-ACCENT_SOFT = _INDIGO_100
+SUCCESS = _TAG_ACTION_GREEN
+WARNING = _TAG_FANTASY_AMBER
+DANGER = _TAG_DRAMA_RED
 
-SUCCESS = _GREEN_600
-SUCCESS_SOFT = _GREEN_100
-WARNING = _AMBER_600
-DANGER = _RED_600
-DANGER_SOFT = _RED_100
+# AniList vs MyAnimeList brand-color pair -- used wherever both platforms'
+# numbers appear side by side (dashboard stat cards, source-breakdown bars),
+# per design.md 7's "swap genre tag colors for AL/MAL brand colors" note.
+ANILIST_COLOR = _ACCENT_BLUE
+MYANIMELIST_COLOR = _BADGE_DISCUSSION_PURPLE
 
-RADIUS = 8
+RADIUS = 10
 SPACING = 12
 
 STYLESHEET = f"""
@@ -95,13 +113,14 @@ QListWidget#sidebar::item {{
 }}
 
 QListWidget#sidebar::item:hover {{
-    background: rgba(255, 255, 255, 0.08);
+    background: {SURFACE_HOVER};
     color: {SIDEBAR_TEXT_ACTIVE};
 }}
 
 QListWidget#sidebar::item:selected {{
     background: {ACCENT};
-    color: {SIDEBAR_TEXT_ACTIVE};
+    color: {_BG_PRIMARY};
+    font-weight: 600;
 }}
 
 QLabel#sidebarTitle {{
@@ -111,69 +130,110 @@ QLabel#sidebarTitle {{
     padding: 8px 20px 16px 20px;
 }}
 
-/* -- cards / group boxes ---------------------------------------------- */
+/* -- cards / group boxes ------------------------------------------------
+   No visible border -- separation from the page background comes from the
+   surface shade alone, per design.md's "no card border ... separation via
+   background shade against page background" note. */
 
 QGroupBox, QFrame#card {{
     background: {SURFACE};
-    border: 1px solid {BORDER};
+    border: none;
     border-radius: {RADIUS}px;
-    margin-top: 14px;
+    margin-top: 28px;
     padding: 14px;
 }}
 
+/* Without a visible frame line for the title to straddle (the classic
+   bordered-groupbox look design.md explicitly avoids), the title needs its
+   own reserved band clearly taller than one line of 15px bold text --
+   otherwise it overflows down into the surface rectangle below it instead
+   of floating above it as a section heading. margin-top above is that
+   band; this subcontrol-position/top pairing anchors the title to the very
+   top of it instead of vertically centering (the default), which otherwise
+   still crowds the box when the band is this much taller than the text. */
 QGroupBox::title {{
     subcontrol-origin: margin;
-    left: 10px;
+    subcontrol-position: top left;
+    top: 0px;
+    left: 2px;
     padding: 0 4px;
     color: {TEXT_PRIMARY};
+    font-size: 15px;
     font-weight: 600;
 }}
+
+/* -- dividers ------------------------------------------------------------ */
+
+QFrame#divider {{
+    background: {DIVIDER};
+    max-height: 1px;
+    min-height: 1px;
+    border: none;
+}}
+
+/* -- pills / badges ------------------------------------------------------- */
+
+QLabel[pill="true"] {{
+    border-radius: 9px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: {_WHITE};
+}}
+
+QLabel[pillKind="success"] {{ background: {SUCCESS}; }}
+QLabel[pillKind="warning"] {{ background: {WARNING}; color: {_BG_PRIMARY}; }}
+QLabel[pillKind="danger"] {{ background: {DANGER}; color: {_BG_PRIMARY}; }}
+QLabel[pillKind="accent"] {{ background: {ACCENT}; color: {_BG_PRIMARY}; }}
+QLabel[pillKind="neutral"] {{ background: {SURFACE_ALT}; color: {TEXT_SECONDARY}; }}
+QLabel[pillKind="anilist"] {{ background: {ANILIST_COLOR}; color: {_BG_PRIMARY}; }}
+QLabel[pillKind="myanimelist"] {{ background: {MYANIMELIST_COLOR}; }}
 
 /* -- buttons ------------------------------------------------------------ */
 
 QPushButton {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
+    background: {SURFACE_ALT};
+    border: none;
     border-radius: {RADIUS}px;
     padding: 7px 16px;
     color: {TEXT_PRIMARY};
 }}
 
 QPushButton:hover {{
-    border-color: {ACCENT};
+    background: {SURFACE_HOVER};
     color: {ACCENT};
 }}
 
 QPushButton:disabled {{
     color: {TEXT_SECONDARY};
-    background: {PAGE_BG};
+    background: {SURFACE};
 }}
 
 QPushButton#primaryButton {{
     background: {ACCENT};
     border: none;
-    color: {_WHITE};
+    color: {_BG_PRIMARY};
     font-weight: 600;
     padding: 9px 18px;
 }}
 
 QPushButton#primaryButton:hover {{
     background: {ACCENT_HOVER};
-    color: {_WHITE};
+    color: {_BG_PRIMARY};
 }}
 
 QPushButton#primaryButton:disabled {{
-    background: {_INK_300};
-    color: {_WHITE};
+    background: {SURFACE_ALT};
+    color: {TEXT_SECONDARY};
 }}
 
 QPushButton#dangerButton {{
     color: {DANGER};
-    border-color: {DANGER_SOFT};
 }}
 
 QPushButton#dangerButton:hover {{
-    border-color: {DANGER};
+    background: {SURFACE_HOVER};
+    color: {DANGER};
 }}
 
 QPushButton#linkButton {{
@@ -199,11 +259,17 @@ QToolButton {{
 /* -- inputs -------------------------------------------------------------- */
 
 QLineEdit, QComboBox, QSpinBox {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
+    background: {_BG_PRIMARY};
+    border: 1px solid {SURFACE_ALT};
     border-radius: {RADIUS}px;
     padding: 6px 10px;
+    color: {TEXT_PRIMARY};
     selection-background-color: {ACCENT_SOFT};
+}}
+
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{
+    color: {TEXT_SECONDARY};
+    border-color: {SURFACE};
 }}
 
 QLineEdit:focus, QComboBox:focus {{
@@ -228,8 +294,8 @@ QComboBox::down-arrow {{
 }}
 
 QComboBox QAbstractItemView {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
+    background: {SURFACE_ALT};
+    border: none;
     border-radius: {RADIUS}px;
     outline: none;
     selection-background-color: {ACCENT_SOFT};
@@ -245,8 +311,8 @@ QCheckBox, QRadioButton {{
 /* -- collapsible section header ---------------------------------------- */
 
 QToolButton#collapsibleHeader {{
-    background: {PAGE_BG};
-    border: 1px solid {BORDER};
+    background: {SURFACE_ALT};
+    border: none;
     border-radius: {RADIUS}px;
     padding: 8px 12px;
     color: {TEXT_PRIMARY};
@@ -255,38 +321,112 @@ QToolButton#collapsibleHeader {{
 }}
 
 QToolButton#collapsibleHeader:hover {{
-    border-color: {ACCENT};
+    background: {SURFACE_HOVER};
     color: {ACCENT};
+}}
+
+QToolButton#collapsibleHeader:disabled {{
+    color: {TEXT_SECONDARY};
 }}
 
 /* -- tables ---------------------------------------------------------- */
 
 QTableWidget {{
     background: {SURFACE};
-    border: 1px solid {BORDER};
+    border: none;
     border-radius: {RADIUS}px;
-    gridline-color: {BORDER};
+    gridline-color: {DIVIDER};
     selection-background-color: {ACCENT_SOFT};
     selection-color: {TEXT_PRIMARY};
+    alternate-background-color: {SURFACE_ALT};
+}}
+
+/* The section-only rule below doesn't cover the header viewport's own
+   background past the last section (visible as a stray light-gray strip
+   under a short vertical row-number header) -- this covers that. */
+QHeaderView {{
+    background: {SURFACE};
 }}
 
 QHeaderView::section {{
-    background: {PAGE_BG};
+    background: {SURFACE};
     color: {TEXT_SECONDARY};
     border: none;
-    border-bottom: 1px solid {BORDER};
+    border-bottom: 1px solid {DIVIDER};
     padding: 6px 8px;
     font-weight: 600;
+}}
+
+QTableCornerButton::section {{
+    background: {SURFACE};
+    border: none;
+}}
+
+/* -- scrollbars ----------------------------------------------------------
+   The native scrollbar is light gray and clashes hard with a dark theme --
+   flat, thin, and colored from the same token set as everything else. */
+
+QScrollBar:vertical {{
+    background: transparent;
+    width: 12px;
+    margin: 0px;
+}}
+
+QScrollBar::handle:vertical {{
+    background: {SURFACE_ALT};
+    border-radius: 5px;
+    min-height: 24px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background: {SURFACE_HOVER};
+}}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0px;
+    border: none;
+    background: none;
+}}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: none;
+}}
+
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 12px;
+    margin: 0px;
+}}
+
+QScrollBar::handle:horizontal {{
+    background: {SURFACE_ALT};
+    border-radius: 5px;
+    min-width: 24px;
+}}
+
+QScrollBar::handle:horizontal:hover {{
+    background: {SURFACE_HOVER};
+}}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    border: none;
+    background: none;
+}}
+
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: none;
 }}
 
 /* -- progress / text views --------------------------------------------- */
 
 QProgressBar {{
-    background: {PAGE_BG};
-    border: 1px solid {BORDER};
+    background: {SURFACE};
+    border: none;
     border-radius: {RADIUS}px;
     text-align: center;
     height: 16px;
+    color: {TEXT_PRIMARY};
 }}
 
 QProgressBar::chunk {{
@@ -296,8 +436,9 @@ QProgressBar::chunk {{
 
 QPlainTextEdit {{
     background: {SURFACE};
-    border: 1px solid {BORDER};
+    border: none;
     border-radius: {RADIUS}px;
+    color: {TEXT_PRIMARY};
     font-family: "Cascadia Code", "Consolas", monospace;
     padding: 8px;
 }}
@@ -321,8 +462,8 @@ QLabel#pageSubtitle, QLabel#muted {{
 }}
 
 QToolTip {{
-    background: {_INK_900};
-    color: {_WHITE};
+    background: {SURFACE_ALT};
+    color: {TEXT_PRIMARY};
     border: none;
     padding: 6px 10px;
     border-radius: 6px;

@@ -547,7 +547,7 @@ def _validate_required(cfg: Config, config_path: Path | None) -> None:
         )
 
 
-def load_config(path: str | os.PathLike[str] | None = None) -> Config:
+def load_config(path: str | os.PathLike[str] | None = None, *, validate: bool = True) -> Config:
     """Load configuration with priority: env var > config.yaml > built-in default.
 
     If `path` is omitted, configuration comes entirely from environment variables.
@@ -555,10 +555,22 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
     variables instead of raising. This matches the upstream Go tool's forgiving
     behavior, since Docker/CI setups often rely on env-only config with no file
     present at all.
+
+    `validate=False` (used by the GUI, never the CLI) skips the all-required-
+    fields check below entirely, returning whatever was actually parsed even
+    if incomplete. The CLI needs the strict gate -- a sync genuinely can't run
+    without every field -- but the GUI must NOT raise-and-discard here: Settings
+    is explicitly the place a user fills these in one field at a time across
+    multiple saves, and the old strict-always call in main_window.py silently
+    threw away a fully-valid, already-saved username (or any other partial
+    progress) back to a blank Config() on every restart just because some
+    *other* unrelated field was still empty -- a real, previously-shipped bug,
+    not a hypothetical one.
     """
     if path is None:
         cfg = _apply_env_overrides(Config())
-        _validate_required(cfg, None)
+        if validate:
+            _validate_required(cfg, None)
         return cfg
 
     config_path = Path(path)
@@ -568,7 +580,8 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
         # Not a hard error: fall back to env vars, same as the `path is None` case
         # above. See the docstring for why (Docker/CI setups, mainly).
         cfg = _apply_env_overrides(Config())
-        _validate_required(cfg, config_path)
+        if validate:
+            _validate_required(cfg, config_path)
         return cfg
 
     try:
@@ -581,5 +594,6 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
 
     cfg = _config_from_yaml(data)
     cfg = _apply_env_overrides(cfg)
-    _validate_required(cfg, config_path)
+    if validate:
+        _validate_required(cfg, config_path)
     return cfg
