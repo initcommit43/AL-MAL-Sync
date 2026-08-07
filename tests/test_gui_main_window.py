@@ -7,32 +7,17 @@ user's real config.yaml/token store."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtGui import QCloseEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from al_mal_sync.gui import main_window as main_window_module  # noqa: E402
 from al_mal_sync.gui.main_window import MainWindow  # noqa: E402
 
 # qt_app fixture is shared from conftest.py.
-
-
-class _FakeTrayIcon:
-    """Standing in for a real QSystemTrayIcon -- the offscreen Qt platform
-    tests run under always reports no system tray available (see
-    isSystemTrayAvailable() in main_window.py), so closeEvent's tray-related
-    branch can only be exercised with a stand-in like this one."""
-
-    def __init__(self) -> None:
-        self.messages: list[tuple[str, str]] = []
-
-    def showMessage(self, title: str, message: str, *args: Any, **kwargs: Any) -> None:
-        self.messages.append((title, message))
 
 
 @pytest.fixture
@@ -44,12 +29,12 @@ def window(qt_app: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 class TestMainWindow:
-    def test_all_seven_pages_present_in_dashboard_first_settings_last_order(
+    def test_all_six_pages_present_in_dashboard_first_settings_last_order(
         self, window: MainWindow
     ) -> None:
         titles = [window.nav_list.item(i).text() for i in range(window.nav_list.count())]
         assert titles == [
-            "Dashboard", "Sync", "Import / Export", "Login", "Auto-Sync", "Mapping Issues", "Settings",
+            "Dashboard", "Auto-Sync", "Manual Sync", "Login", "Mapping Issues", "Settings",
         ]
 
     def test_dashboard_is_the_page_shown_on_startup(self, window: MainWindow) -> None:
@@ -92,66 +77,6 @@ class TestMainWindow:
         window.sync_tab.sync_finished.emit()
 
         assert calls == [1]
-
-
-class TestTrayBehavior:
-    """The offscreen Qt platform GUI tests run under always reports no
-    system tray available, so window.tray_icon is None in every real
-    construction here -- these tests swap in a _FakeTrayIcon to exercise
-    closeEvent's branching logic regardless."""
-
-    def test_closing_while_not_watching_closes_normally(self, window: MainWindow) -> None:
-        window.tray_icon = _FakeTrayIcon()
-
-        event = QCloseEvent()
-        window.closeEvent(event)
-
-        assert event.isAccepted() is True
-
-    def test_closing_while_watching_hides_instead_of_closing(
-        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        window.tray_icon = (tray := _FakeTrayIcon())
-        monkeypatch.setattr(type(window.auto_sync_tab), "is_watching", property(lambda self: True))
-        window.show()
-
-        event = QCloseEvent()
-        window.closeEvent(event)
-
-        assert event.isAccepted() is False
-        assert window.isHidden() is True
-        assert len(tray.messages) == 1
-
-    def test_quit_from_tray_forces_a_real_close_even_while_watching(
-        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        window.tray_icon = _FakeTrayIcon()
-        monkeypatch.setattr(type(window.auto_sync_tab), "is_watching", property(lambda self: True))
-        # QApplication.instance().quit() would tear down the shared qt_app
-        # fixture other tests still need -- only _force_quit's effect on
-        # closeEvent's branch is under test here, not the real quit call.
-        class _FakeApp:
-            def quit(self) -> None:
-                pass
-
-        monkeypatch.setattr(main_window_module.QApplication, "instance", lambda: _FakeApp())
-
-        window._quit_from_tray()
-        event = QCloseEvent()
-        window.closeEvent(event)
-
-        assert event.isAccepted() is True
-
-    def test_no_tray_available_always_closes_normally_even_while_watching(
-        self, window: MainWindow, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        window.tray_icon = None
-        monkeypatch.setattr(type(window.auto_sync_tab), "is_watching", property(lambda self: True))
-
-        event = QCloseEvent()
-        window.closeEvent(event)
-
-        assert event.isAccepted() is True
 
 
 class TestPartialConfigSurvivesRestart:

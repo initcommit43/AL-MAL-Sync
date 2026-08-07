@@ -6,13 +6,18 @@ instance (via get_config) and mutates it in place on Save, so other tabs
 (Login, Sync, ...) that hold the same reference see the change immediately
 without any extra notification wiring.
 
-The Auto-Sync schedule is a spinbox + hour/day dropdown, not a raw duration
-string -- a free-text "6h" field (and, worse, a raw 5-field cron expression
-right next to it as if it were equally primary) asks a non-technical user to
-already know a syntax nobody encounters outside sysadmin tooling. The cron
-field still exists for anyone who genuinely needs exact times of day, but
-it's demoted into a collapsed "Advanced" section and explicitly documented
-as an override of the friendly composer above it.
+The Scheduled Sync group configures config.watch (interval or cron) as a
+spinbox + hour/day dropdown, not a raw duration string -- a free-text "6h"
+field (and, worse, a raw 5-field cron expression right next to it as if it
+were equally primary) asks a non-technical user to already know a syntax
+nobody encounters outside sysadmin tooling. The cron field still exists for
+anyone who genuinely needs exact times of day, but it's demoted into a
+collapsed "Advanced" section and explicitly documented as an override of the
+friendly composer above it. There's no GUI page that actually runs on this
+schedule -- config.watch only does anything once something hosts it
+unattended, i.e. the CLI's `watch` command or Docker, so this group exists
+purely to let a non-technical user fill in that config without hand-editing
+YAML.
 
 The "About" section (Open Config Folder / About dialog) lives here rather
 than in a top menu bar: a floating "Help" menu with no visual relationship
@@ -189,13 +194,15 @@ class SettingsTab(QWidget):
         return group
 
     def _build_watch_group(self) -> QGroupBox:
-        group = QGroupBox("Auto-Sync Schedule", self)
+        group = QGroupBox("Scheduled Sync (CLI / Docker)", self)
         layout = QVBoxLayout(group)
 
         self.autosync_enabled_checkbox = QCheckBox("Automatically sync on a schedule", group)
         self.autosync_enabled_checkbox.setToolTip(
-            "Turns on the schedule below. The Auto-Sync page then runs a sync for you\n"
-            "at this interval, as long as the app stays open."
+            "Turns on the schedule below. Doesn't do anything on its own -- run\n"
+            "`al-mal-sync watch` on the command line, or the Docker image, to\n"
+            "actually sync on this schedule unattended (including while this app\n"
+            "isn't open)."
         )
         self.autosync_enabled_checkbox.toggled.connect(self._on_autosync_enabled_toggled)
         layout.addWidget(self.autosync_enabled_checkbox)
@@ -248,7 +255,7 @@ class SettingsTab(QWidget):
         row.addStretch(1)
         return group
 
-    # -- Auto-Sync composer ------------------------------------------------
+    # -- scheduled sync composer --------------------------------------------
 
     def _on_autosync_enabled_toggled(self, checked: bool) -> None:
         self.autosync_amount_spin.setEnabled(checked)

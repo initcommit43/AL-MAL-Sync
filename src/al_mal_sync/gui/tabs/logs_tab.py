@@ -1,6 +1,6 @@
 """Logs tab: the full al_mal_sync logger stream for the lifetime of the
-window (not just one sync run, unlike Sync tab's own live-log panel), with
-a verbose toggle."""
+window (not just one sync run, unlike the Auto-Sync tab's own live-log
+panel), with a verbose toggle."""
 
 from __future__ import annotations
 

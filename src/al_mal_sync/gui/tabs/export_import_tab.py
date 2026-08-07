@@ -1,12 +1,15 @@
-"""Import/Export page: read or write the standard MAL-format XML list file
-(myanimelist.net's own export schema, and the same one AniList's list
-importer accepts). AniList has no native list-export feature of its own, so
-this is the only way to get an AniList list into a file; MyAnimeList gets
-the same export/import pair here for parity/scripting.
+"""Manual Sync page (labeled "Import / Export" internally -- see
+main_window.py's _pages): read or write the standard MAL-format XML list
+file (myanimelist.net's own export schema, and the same one AniList's list
+importer accepts). Unlike the Auto-Sync page (sync_tab.py), which talks
+straight to both APIs, this requires exporting a file and importing it by
+hand -- hence "Manual". AniList has no native list-export feature of its
+own, so this is the only way to get an AniList list into a file;
+MyAnimeList gets the same export/import pair here for parity/scripting.
 
 Export just fetches + serializes (sync.xml_sync.run_export) -- no matching
 involved, so it's a single click plus a folder picker. Import reuses the
-exact same live matching pipeline the Sync page uses (sync.xml_sync.
+exact same live matching pipeline the Auto-Sync page uses (sync.xml_sync.
 run_import -> the same build_strategy_chain/Updater/service classes
 sync.runner.run_sync drives), so its advanced options and result rendering
 mirror sync_tab.py's on purpose rather than reinventing either.
@@ -66,12 +69,12 @@ class ExportImportTab(QWidget):
 
         layout = QVBoxLayout(self)
         apply_page_layout(layout)
-        title = QLabel("Import / Export", self)
+        title = QLabel("Manual Sync", self)
         title.setObjectName("pageTitle")
         layout.addWidget(title)
         subtitle = QLabel(
-            "Read or write a MAL-format XML list file -- useful since AniList has no "
-            "list-export feature of its own.",
+            "Read or write a MAL-format XML list file, then import it wherever it needs to "
+            "go -- useful since AniList has no list-export feature of its own.",
             self,
         )
         subtitle.setObjectName("pageSubtitle")

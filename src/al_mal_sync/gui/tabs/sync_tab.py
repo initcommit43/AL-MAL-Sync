@@ -1,4 +1,8 @@
-"""Sync page: a simple "what to sync" + "direction" choice as the primary,
+"""Auto-Sync page (labeled "Sync" internally -- see main_window.py's _pages):
+talks straight to the AniList/MyAnimeList APIs and updates both lists for
+you in one click, no manual file handling involved -- as opposed to Manual
+Sync (export_import_tab.py), which requires exporting/importing an XML file
+by hand. A simple "what to sync" + "direction" choice are the primary,
 always-visible controls (with hover tooltips explaining each in plain
 language), a big Run Sync button, and every other CLI flag (see cli.py's
 _sync_options) tucked into a collapsed "Advanced options" section for anyone
@@ -81,7 +85,7 @@ class SyncTab(QWidget):
 
         layout = QVBoxLayout(self)
         apply_page_layout(layout)
-        title = QLabel("Sync", self)
+        title = QLabel("Auto-Sync", self)
         title.setObjectName("pageTitle")
         layout.addWidget(title)
         subtitle = QLabel("Choose what to sync, then run it. Hover any option for details.", self)
