@@ -12,6 +12,7 @@ from click.testing import CliRunner
 
 from al_mal_sync import cli
 from al_mal_sync.mapping.manual_mappings import MappingsConfig
+from al_mal_sync.sync.updater import SyncOutcome
 from al_mal_sync.unmapped import UnmappedRecord, UnmappedState
 
 
@@ -181,6 +182,85 @@ class TestSyncAndWatchFlagWiring:
         result = CliRunner().invoke(cli.main, ["watch", "-i", "1h"])
         assert len(calls) == 1
         assert isinstance(result.exception, _StopLoop)
+
+
+class TestExportAndImport:
+    """CLI wiring for `export`/`import` against a stubbed run_export/run_import.
+    Orchestration itself (matching, XML parsing) is tested in
+    test_xml_sync.py and test_xml_list.py."""
+
+    def test_export_writes_one_file_per_kind(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        monkeypatch.setattr(
+            cli, "run_export",
+            lambda config, **kw: {"anime": "<anime-xml/>", "manga": "<manga-xml/>"},
+        )
+        result = CliRunner().invoke(
+            cli.main, ["export", "-s", "anilist", "--all", "--output-dir", str(tmp_path)]
+        )
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "anilist_anime.xml").read_text() == "<anime-xml/>"
+        assert (tmp_path / "anilist_manga.xml").read_text() == "<manga-xml/>"
+
+    def test_export_output_path_used_for_single_kind(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        monkeypatch.setattr(cli, "run_export", lambda config, **kw: {"anime": "<xml/>"})
+        out_file = tmp_path / "mylist.xml"
+        result = CliRunner().invoke(cli.main, ["export", "-s", "myanimelist", "-o", str(out_file)])
+        assert result.exit_code == 0, result.output
+        assert out_file.read_text() == "<xml/>"
+
+    def test_export_rejects_output_with_all(self) -> None:
+        result = CliRunner().invoke(cli.main, ["export", "-s", "anilist", "--all", "-o", "x.xml"])
+        assert result.exit_code != 0
+        assert "--output can't be combined with --all" in result.output
+
+    def test_export_service_error_becomes_click_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _raise(config: Any, **kw: Any) -> Any:
+            raise cli.XmlSyncError("bad service")
+
+        monkeypatch.setattr(cli, "run_export", _raise)
+        result = CliRunner().invoke(cli.main, ["export", "-s", "anilist"])
+        assert result.exit_code != 0
+        assert "bad service" in result.output
+
+    def test_import_forwards_flags_and_reads_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake_run_import(config: Any, **kw: Any) -> Any:
+            captured.update(kw)
+            return "anime", SyncOutcome()
+
+        monkeypatch.setattr(cli, "run_import", _fake_run_import)
+        xml_file = tmp_path / "list.xml"
+        xml_file.write_text("<myanimelist/>", encoding="utf-8")
+
+        result = CliRunner().invoke(
+            cli.main, ["import", "-i", str(xml_file), "-t", "anilist", "--force", "--dry-run"]
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["target_service"] == "anilist"
+        assert captured["xml_text"] == "<myanimelist/>"
+        assert captured["force"] is True
+        assert captured["dry_run"] is True
+        assert captured["kind"] is None
+
+    def test_import_manga_flag_sets_kind(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake_run_import(config: Any, **kw: Any) -> Any:
+            captured.update(kw)
+            return "manga", SyncOutcome()
+
+        monkeypatch.setattr(cli, "run_import", _fake_run_import)
+        xml_file = tmp_path / "list.xml"
+        xml_file.write_text("<myanimelist/>", encoding="utf-8")
+
+        result = CliRunner().invoke(cli.main, ["import", "-i", str(xml_file), "-t", "myanimelist", "--manga"])
+        assert result.exit_code == 0, result.output
+        assert captured["kind"] == "manga"
+
+    def test_import_missing_file_is_a_clean_error(self) -> None:
+        result = CliRunner().invoke(cli.main, ["import", "-i", "does-not-exist.xml", "-t", "anilist"])
+        assert result.exit_code != 0
 
 
 class TestUnmapped:

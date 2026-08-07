@@ -12,11 +12,13 @@ from __future__ import annotations
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
 
 import click
 from croniter import CroniterError, croniter
 
+from . import xml_list
 from .clients.anilist import AniListAPIError
 from .clients.myanimelist import MyAnimeListAPIError
 from .config import Config, ConfigError, load_config
@@ -28,6 +30,7 @@ from .sync.report import build_report, format_report
 from .sync.runner import run_sync
 from .sync.statistics import SyncStatistics, format_statistics_table
 from .sync.updater import SyncOutcome
+from .sync.xml_sync import XmlSyncError, run_export, run_import
 from .unmapped import load_unmapped_state, save_unmapped_state
 
 _SERVICE_CHOICES = ("anilist", "myanimelist", "all")
@@ -219,6 +222,83 @@ def sync(
         offline_db=offline_db, offline_db_force_refresh=offline_db_force_refresh,
         arm_api=arm_api, arm_api_url=arm_api_url, jikan_api=jikan_api, favorites=favorites,
     )
+
+
+# --------------------------------------------------------------------------
+# export / import (MAL-format XML list files)
+# --------------------------------------------------------------------------
+
+
+def _default_export_filename(service: str, kind: str) -> str:
+    return f"{service}_{kind}.xml"
+
+
+@main.command()
+@click.option("--service", "-s", type=click.Choice(("anilist", "myanimelist")), required=True, help="Which service's list to export.")
+@click.option("--manga", is_flag=True, help="Export manga instead of anime.")
+@click.option("--all", "all_media", is_flag=True, help="Export both anime and manga.")
+@click.option("--output", "-o", "output_path", type=click.Path(dir_okay=False), default=None, help="Output file path. Not usable with --all (writes one file per kind instead).")
+@click.option("--output-dir", type=click.Path(file_okay=False), default=".", help="Directory to write into when --output isn't given.")
+@click.pass_context
+def export(
+    ctx: click.Context,
+    service: str, manga: bool, all_media: bool, output_path: str | None, output_dir: str,
+) -> None:
+    """Export an AniList or MyAnimeList list to a MAL-format XML file."""
+    if output_path and all_media:
+        raise click.ClickException("--output can't be combined with --all; use --output-dir instead")
+
+    config = _load_config(ctx)
+    try:
+        documents = run_export(config, service=service, manga=manga, all_media=all_media)
+    except (OAuthError, AniListAPIError, MyAnimeListAPIError, XmlSyncError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    for kind, xml_text in documents.items():
+        path = Path(output_path) if output_path else Path(output_dir) / _default_export_filename(service, kind)
+        path.write_text(xml_text, encoding="utf-8")
+        click.secho(f"Wrote {kind} list ({service}) -> {path}", fg="green")
+
+
+@main.command(name="import")
+@click.option("--file", "-i", "file_path", type=click.Path(exists=True, dir_okay=False), required=True, help="MAL-format XML file to import.")
+@click.option("--target", "-t", "target_service", type=click.Choice(("anilist", "myanimelist")), required=True, help="Which service to import the list into.")
+@click.option("--manga", is_flag=True, help="Treat the file as a manga list instead of auto-detecting.")
+@click.option("--force", "-f", is_flag=True, help="Skip strategy matching; import every entry directly by ID.")
+@click.option("--dry-run", "-d", is_flag=True, help="Don't write updates, just report what would change.")
+@click.option("--offline-db", is_flag=True, help="Force-enable the offline anime database id-mapping strategy.")
+@click.option("--offline-db-force-refresh", is_flag=True, help="Force re-download the offline anime database cache.")
+@click.option("--arm-api", is_flag=True, help="Enable the ARM API id-mapping fallback (anime only).")
+@click.option("--arm-api-url", default=None, help="Override the ARM API base URL.")
+@click.option("--jikan-api", is_flag=True, help="Enable the Jikan API id-mapping fallback (manga only).")
+@click.option("--verbose", is_flag=True, help="Enable debug logging.")
+@click.pass_context
+def import_(
+    ctx: click.Context,
+    file_path: str, target_service: str, manga: bool, force: bool, dry_run: bool,
+    offline_db: bool, offline_db_force_refresh: bool, arm_api: bool, arm_api_url: str | None,
+    jikan_api: bool, verbose: bool,
+) -> None:
+    """Import a MAL-format XML list file into AniList or MyAnimeList."""
+    configure_logging(verbose)
+    config = _load_config(ctx)
+    xml_text = Path(file_path).read_text(encoding="utf-8")
+
+    click.echo(f"Importing {file_path} -> {target_service}...")
+    try:
+        kind, outcome = run_import(
+            config,
+            xml_text=xml_text,
+            target_service=target_service,
+            kind="manga" if manga else None,
+            force=force, dry_run=dry_run,
+            offline_db=offline_db, offline_db_force_refresh=offline_db_force_refresh,
+            arm_api=arm_api, arm_api_url=arm_api_url, jikan_api=jikan_api,
+        )
+    except (OAuthError, AniListAPIError, MyAnimeListAPIError, XmlSyncError, xml_list.XmlListError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo("\n" + format_statistics_table(SyncStatistics.from_outcomes({kind: outcome})))
 
 
 # --------------------------------------------------------------------------

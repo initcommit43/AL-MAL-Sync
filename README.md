@@ -69,6 +69,8 @@ al-mal-sync sync --all --dry-run --favorites   # anime + manga, preview only, pl
 al-mal-sync watch -i 6h        # sync every 6 hours
 al-mal-sync watch -s "0 */6 * * *"  # or on a cron schedule instead
 al-mal-sync unmapped --fix     # resolve entries that couldn't be auto-matched
+al-mal-sync export -s anilist --all            # AniList's list -> MAL-format XML files
+al-mal-sync import -i list.xml -t anilist      # import a MAL-format XML file into AniList
 ```
 
 Key `sync`/`watch` flags: `--manga` (manga instead of anime), `--all` (both),
@@ -76,6 +78,14 @@ Key `sync`/`watch` flags: `--manga` (manga instead of anime), `--all` (both),
 `--force` (skip matching, sync by id directly), `--dry-run`, `--offline-db`/
 `--arm-api`/`--jikan-api` (opt in to extra id-mapping sources), `--favorites`.
 Run `al-mal-sync <command> --help` for the full list.
+
+`export`/`import` read and write the same XML format myanimelist.net's own
+"Export list" produces (and its importer, and AniList's list importer, both
+accept) -- useful since AniList has no native list-export feature of its own.
+`import` reuses the exact same id-mapping/matching pipeline as `sync`, so a
+file with no AniList ids in it (e.g. one exported straight from MAL) still
+matches existing entries by title/offline-db/Hato/ARM/Jikan, same as a live
+MyAnimeList -> AniList sync would.
 
 See [docs/date-sync.md](docs/date-sync.md) for the exact date-comparison
 rules applied during sync.
