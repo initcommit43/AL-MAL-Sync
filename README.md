@@ -109,6 +109,21 @@ either one works against the same setup. For unattended background
 scheduling, keep using `al-mal-sync watch` (CLI/Docker); the GUI's Watch
 tab only runs while its window is open.
 
+### Desktop launcher
+
+For a normal double-click launch instead of `al-mal-sync-gui` from a
+terminal, build a small launcher exe once — it just starts the GUI out of
+`.venv`, so only the few-line stub gets compiled, not PySide6 itself:
+
+```sh
+pip install pyinstaller
+pyinstaller --onefile --noconsole --name "AL-MAL-Sync" --distpath . --workpath build/launcher --specpath build/launcher scripts/launcher.py
+```
+
+This drops `AL-MAL-Sync.exe` in the project root. It's a build artifact
+(gitignored, not tracked) tied to the `.venv` next to it — rebuild it after
+recreating the venv elsewhere.
+
 ## Docker
 
 ```sh
