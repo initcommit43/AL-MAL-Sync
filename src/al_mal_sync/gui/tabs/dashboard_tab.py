@@ -1,9 +1,14 @@
 """Dashboard page: the first thing a user sees. A quick-glance summary --
 how big each platform's library is and whether they roughly agree, whether
-both accounts are connected, whether anything needs attention, and when the
-last sync happened -- with one-click jumps to the pages that act on each of
-those. No AniList/MyAnimeList numeric IDs anywhere here; those only matter on
-the Mapping Issues page where they're actually actionable.
+both accounts are connected, and whether anything needs attention -- with a
+"Review" jump straight to Mapping Issues, since that one's conditional (only
+appears when there's actually something to act on). No AniList/MyAnimeList
+numeric IDs anywhere here; those only matter on the Mapping Issues page where
+they're actually actionable.
+
+Deliberately has no "Go to Sync"/"Go to Login" buttons -- those pages are
+already one click away in the always-visible sidebar, so a second button here
+pointing at the same place was pure redundancy, not a shortcut.
 
 Counts are fetched live (dashboard.fetch_dashboard_stats) on a worker thread,
 same run_in_thread pattern as every other page's network calls. The unmapped
@@ -31,10 +36,8 @@ from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
-from ..widgets import Pill, StatCard, apply_page_layout, left_aligned
+from ..widgets import Pill, StatCard, apply_page_layout
 from ..workers import run_in_thread
-
-_BUTTON_WIDTH = 220
 
 
 def _diff_text(anilist: int, myanimelist: int) -> tuple[str, str]:
@@ -57,7 +60,7 @@ _MIN_AUTO_REFRESH_INTERVAL_SECONDS = 20.0
 
 
 class DashboardTab(QWidget):
-    navigate_requested = Signal(str)  # "sync" | "login" | "mapping_issues"
+    navigate_requested = Signal(str)  # "mapping_issues"
 
     def __init__(self, get_config: Callable[[], Config], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -93,11 +96,6 @@ class DashboardTab(QWidget):
 
         layout.addWidget(self._build_status_group())
 
-        self.run_sync_button = QPushButton("Go to Sync", self)
-        self.run_sync_button.setObjectName("primaryButton")
-        self.run_sync_button.clicked.connect(lambda: self.navigate_requested.emit("sync"))
-        layout.addLayout(left_aligned(self.run_sync_button, _BUTTON_WIDTH))
-
         layout.addStretch(1)
 
         self.reload()
@@ -112,10 +110,6 @@ class DashboardTab(QWidget):
         self.myanimelist_status_label = QLabel("MyAnimeList: checking...", self)
         self.myanimelist_status_label.setWordWrap(True)
         row.addWidget(self.myanimelist_status_label, 1)
-
-        self.go_to_login_button = QPushButton("Go to Login", group)
-        self.go_to_login_button.clicked.connect(lambda: self.navigate_requested.emit("login"))
-        row.addWidget(self.go_to_login_button)
 
         return group
 

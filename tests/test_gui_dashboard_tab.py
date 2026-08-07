@@ -240,28 +240,26 @@ class TestRefreshThrottling:
 
 
 class TestNavigation:
-    def test_go_to_sync_button_emits_navigate_requested(
+    def test_review_button_emits_navigate_requested(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        save_unmapped_state(
+            UnmappedState(
+                entries=[
+                    UnmappedRecord(
+                        title="X", anilist_id=1, mal_id=0, media_type="anime",
+                        direction="forward", reason="r", updated_at="t",
+                    )
+                ]
+            ),
+            config.resolved_unmapped_state_path,
+        )
         _stub_fetch(monkeypatch, _BOTH_LOGGED_OUT)
         tab = DashboardTab(lambda: config)
         calls: list[str] = []
         tab.navigate_requested.connect(calls.append)
 
-        tab.run_sync_button.click()
+        tab.go_to_mapping_issues_button.click()
 
-        assert calls == ["sync"]
-        wait_until(qt_app, lambda: tab._thread is None)
-
-    def test_go_to_login_button_emits_navigate_requested(
-        self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _stub_fetch(monkeypatch, _BOTH_LOGGED_OUT)
-        tab = DashboardTab(lambda: config)
-        calls: list[str] = []
-        tab.navigate_requested.connect(calls.append)
-
-        tab.go_to_login_button.click()
-
-        assert calls == ["login"]
+        assert calls == ["mapping_issues"]
         wait_until(qt_app, lambda: tab._thread is None)
