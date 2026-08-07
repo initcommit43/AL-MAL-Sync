@@ -112,7 +112,7 @@ class TestLastSyncAndNeedsAttention:
 
 
 class TestStatsWorker:
-    def test_renders_authenticated_counts_and_diff(
+    def test_renders_authenticated_counts_per_platform(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         stats = DashboardStats(
@@ -122,15 +122,16 @@ class TestStatsWorker:
         _stub_fetch(monkeypatch, stats)
 
         tab = DashboardTab(lambda: config)
-        wait_until(qt_app, lambda: "AniList 10" in tab.anime_card.value_label.text())
+        wait_until(qt_app, lambda: tab.anilist_card._value_labels["Anime"].text() == "10")
 
-        assert "AniList 10" in tab.anime_card.value_label.text()
-        assert "MAL 8" in tab.anime_card.value_label.text()
-        assert "AniList has 2 more" in tab.anime_card.subtext_label.text()
-        assert "In sync" in tab.manga_card.subtext_label.text()
+        assert tab.anilist_card._value_labels["Anime"].text() == "10"
+        assert tab.anilist_card._value_labels["Manga"].text() == "5"
+        assert tab.mal_card._value_labels["Anime"].text() == "8"
+        assert tab.mal_card._value_labels["Manga"].text() == "5"
+        assert tab.anilist_card.subtext_label.isVisible() is False
         assert "AniList: connected" in tab.anilist_status_label.text()
 
-    def test_not_authenticated_shows_login_prompt_on_card(
+    def test_not_authenticated_shows_login_prompt_on_that_platforms_card(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         stats = DashboardStats(
@@ -140,9 +141,11 @@ class TestStatsWorker:
         _stub_fetch(monkeypatch, stats)
 
         tab = DashboardTab(lambda: config)
-        wait_until(qt_app, lambda: tab.anime_card.subtext_label.text() != "")
+        wait_until(qt_app, lambda: tab.anilist_card.subtext_label.text() != "")
 
-        assert "Log in to both accounts" in tab.anime_card.subtext_label.text()
+        assert "Log in to see this" in tab.anilist_card.subtext_label.text()
+        assert tab.anilist_card._value_labels["Anime"].text() == "--"
+        assert tab.mal_card.subtext_label.isVisible() is False
         assert "AniList: not logged in" in tab.anilist_status_label.text()
         assert "MyAnimeList: connected" in tab.myanimelist_status_label.text()
 
@@ -159,6 +162,8 @@ class TestStatsWorker:
         wait_until(qt_app, lambda: "boom" in tab.anilist_status_label.text())
 
         assert "boom" in tab.anilist_status_label.text()
+        assert "boom" in tab.anilist_card.subtext_label.text()
+        assert tab.mal_card._value_labels["Anime"].text() == "1"
         assert "MyAnimeList: connected" in tab.myanimelist_status_label.text()
 
 

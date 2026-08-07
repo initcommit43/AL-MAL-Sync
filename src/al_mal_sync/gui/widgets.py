@@ -1,8 +1,8 @@
 """Small reusable widgets/helpers shared across pages: a collapsible section
 (used by Sync's "Advanced options" and Mapping Issues' "Manual overrides"),
-a divider, a colored status pill, a source-breakdown bar, a stat card (used
-by the Dashboard's tiles), and two layout helpers -- the design.md component
-set adapted to Qt.
+a divider, a colored status pill, a stat card (used by the Dashboard's
+tiles), and two layout helpers -- the design.md component set adapted to
+Qt.
 
 The layout helpers exist because Qt's QVBoxLayout/QFormLayout stretch every
 child to the full width of their parent by default -- with no page-level
@@ -25,8 +25,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QToolButton, QVBoxLayout, QWidget
-
-from .theme import ANILIST_COLOR, MYANIMELIST_COLOR
 
 PAGE_MARGIN = 24
 PAGE_SPACING = 16
@@ -153,97 +151,68 @@ class Pill(QLabel):
         self.set_kind(kind)
 
 
-class SourceBreakdownBar(QWidget):
-    """Horizontal proportional bar showing an AniList-vs-MyAnimeList split
-    of a count, with a legend row above -- design.md's Genre Overview bar,
-    repurposed per design.md section 7 as a "source breakdown" instead of a
-    genre breakdown. AniList's segment always renders in `ANILIST_COLOR`,
-    MyAnimeList's in `MYANIMELIST_COLOR`, so the same two colors identify
-    each platform everywhere both appear side by side."""
-
-    _BAR_HEIGHT = 8
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        legend = QHBoxLayout()
-        self.anilist_label = QLabel(self)
-        self.anilist_label.setStyleSheet(f"color: {ANILIST_COLOR}; font-weight: 600;")
-        legend.addWidget(self.anilist_label)
-        legend.addStretch(1)
-        self.myanimelist_label = QLabel(self)
-        self.myanimelist_label.setStyleSheet(f"color: {MYANIMELIST_COLOR}; font-weight: 600;")
-        legend.addWidget(self.myanimelist_label)
-        layout.addLayout(legend)
-
-        bar = QWidget(self)
-        bar.setFixedHeight(self._BAR_HEIGHT)
-        self._bar_layout = QHBoxLayout(bar)
-        self._bar_layout.setContentsMargins(0, 0, 0, 0)
-        self._bar_layout.setSpacing(2)
-        anilist_segment = QFrame(bar)
-        anilist_segment.setStyleSheet(f"background: {ANILIST_COLOR}; border-radius: 4px;")
-        mal_segment = QFrame(bar)
-        mal_segment.setStyleSheet(f"background: {MYANIMELIST_COLOR}; border-radius: 4px;")
-        self._bar_layout.addWidget(anilist_segment)
-        self._bar_layout.addWidget(mal_segment)
-        layout.addWidget(bar)
-
-        self.set_counts(0, 0)
-
-    def set_counts(self, anilist_count: int, mal_count: int) -> None:
-        self.anilist_label.setText(f"AniList {anilist_count}")
-        self.myanimelist_label.setText(f"MyAnimeList {mal_count}")
-        anilist_share = max(anilist_count, 0)
-        mal_share = max(mal_count, 0)
-        if anilist_share == 0 and mal_share == 0:
-            anilist_share, mal_share = 1, 1
-        self._bar_layout.setStretch(0, anilist_share)
-        self._bar_layout.setStretch(1, mal_share)
-
-
 class StatCard(QFrame):
-    """A small card: a muted title, a big value, an optional colored
-    sub-label (e.g. a diff or status note), and an optional AniList/
-    MyAnimeList source-breakdown bar underneath (see `set_breakdown`)."""
+    """A small card: a muted title plus one labeled count row per entry in
+    `row_labels` (e.g. "Anime" / "Manga"), and an optional error subtext
+    line underneath (see `set_subtext`).
 
-    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+    Each row's value sits in a fixed-minimum-width column sized to fit
+    `_VALUE_DIGITS` digits -- without it, two sibling cards (one per
+    platform) visibly differ in size purely because one platform's counts
+    happen to have more digits than the other's, which reads as a layout
+    bug rather than "these are just two different numbers". Counts within
+    that digit budget all render at the same card width; a card only grows
+    past it once a count genuinely needs the room (a 5-digit library)."""
+
+    _VALUE_DIGITS = 4
+
+    def __init__(self, title: str, row_labels: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
 
         self.title_label = QLabel(title, self)
         self.title_label.setObjectName("muted")
         layout.addWidget(self.title_label)
 
-        self.value_label = QLabel("--", self)
-        self.value_label.setObjectName("statValue")
-        layout.addWidget(self.value_label)
+        self._value_labels: dict[str, QLabel] = {}
+        min_value_width = 0
+        for row_label in row_labels:
+            row = QHBoxLayout()
+            row.setSpacing(12)
+            label = QLabel(row_label, self)
+            label.setObjectName("muted")
+            row.addWidget(label)
+            row.addStretch(1)
+
+            value = QLabel("--", self)
+            value.setObjectName("statValue")
+            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # ensurePolished() forces the "statValue" QSS rule (font-size:
+            # 26px, weight 700) to actually apply before fontMetrics() reads
+            # it -- without this, measurement happens against the
+            # not-yet-styled default font and undershoots the real width.
+            value.ensurePolished()
+            if not min_value_width:
+                min_value_width = value.fontMetrics().horizontalAdvance("9" * self._VALUE_DIGITS)
+            value.setMinimumWidth(min_value_width)
+            row.addWidget(value)
+
+            layout.addLayout(row)
+            self._value_labels[row_label] = value
 
         self.subtext_label = QLabel("", self)
         self.subtext_label.setObjectName("muted")
         self.subtext_label.setWordWrap(True)
+        self.subtext_label.setVisible(False)
         layout.addWidget(self.subtext_label)
 
-        self.breakdown_bar = SourceBreakdownBar(self)
-        self.breakdown_bar.setVisible(False)
-        layout.addWidget(self.breakdown_bar)
-
-    def set_value(self, text: str) -> None:
-        self.value_label.setText(text)
+    def set_value(self, row_label: str, value: int | str) -> None:
+        self._value_labels[row_label].setText(str(value))
 
     def set_subtext(self, text: str, *, color: str | None = None) -> None:
         self.subtext_label.setText(text)
         self.subtext_label.setStyleSheet(f"color: {color};" if color else "")
-
-    def set_breakdown(self, anilist_count: int, mal_count: int) -> None:
-        self.breakdown_bar.set_counts(anilist_count, mal_count)
-        self.breakdown_bar.setVisible(True)
-
-    def hide_breakdown(self) -> None:
-        self.breakdown_bar.setVisible(False)
+        self.subtext_label.setVisible(bool(text))

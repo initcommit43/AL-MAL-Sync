@@ -1,10 +1,12 @@
 """Dashboard page: the first thing a user sees. A quick-glance summary --
-how big each platform's library is and whether they roughly agree, whether
-both accounts are connected, and whether anything needs attention -- with a
-"Review" jump straight to Mapping Issues, since that one's conditional (only
-appears when there's actually something to act on). No AniList/MyAnimeList
-numeric IDs anywhere here; those only matter on the Mapping Issues page where
-they're actually actionable.
+how big each platform's library is (one stat card per platform, anime and
+manga counts together, since "AniList vs MyAnimeList" is the comparison a
+user actually cares about here, not "anime vs manga"), whether both accounts
+are connected, and whether anything needs attention -- with a "Review" jump
+straight to Mapping Issues, since that one's conditional (only appears when
+there's actually something to act on). No AniList/MyAnimeList numeric IDs
+anywhere here; those only matter on the Mapping Issues page where they're
+actually actionable.
 
 Deliberately has no "Go to Sync"/"Go to Login" buttons -- those pages are
 already one click away in the always-visible sidebar, so a second button here
@@ -38,17 +40,6 @@ from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
 from ..widgets import Pill, StatCard, apply_page_layout
 from ..workers import run_in_thread
-
-
-def _diff_text(anilist: int, myanimelist: int) -> tuple[str, str]:
-    """Returns (text, color) describing the gap between the two counts."""
-    diff = anilist - myanimelist
-    if diff == 0:
-        return "In sync.", SUCCESS
-    if diff > 0:
-        return f"AniList has {diff} more than MyAnimeList.", WARNING
-    return f"MyAnimeList has {-diff} more than AniList.", WARNING
-
 
 # AniList/MyAnimeList both rate-limit aggressively. The Dashboard's own live
 # fetch is wired to fire on every nav switch to it, plus after settings
@@ -85,10 +76,18 @@ class DashboardTab(QWidget):
 
         stats_layout = QGridLayout()
         stats_layout.setSpacing(16)
-        self.anime_card = StatCard("Anime library size", self)
-        self.manga_card = StatCard("Manga library size", self)
-        stats_layout.addWidget(self.anime_card, 0, 0)
-        stats_layout.addWidget(self.manga_card, 0, 1)
+        self.anilist_card = StatCard("AniList Library size", ["Anime", "Manga"], self)
+        self.mal_card = StatCard("MyAnimeList Library size", ["Anime", "Manga"], self)
+        # StatCard's own fixed-width value column keeps the two cards equal
+        # width when it's the *counts* that differ, but "MyAnimeList Library
+        # size" is simply longer text than "AniList Library size" -- without
+        # normalizing to the wider card's natural width here too, the titles
+        # alone would make the cards visibly mismatched regardless of counts.
+        card_width = max(self.anilist_card.sizeHint().width(), self.mal_card.sizeHint().width())
+        self.anilist_card.setMinimumWidth(card_width)
+        self.mal_card.setMinimumWidth(card_width)
+        stats_layout.addWidget(self.anilist_card, 0, 0)
+        stats_layout.addWidget(self.mal_card, 0, 1)
         # A third, empty stretch column so the two cards keep a sensible
         # width on a wide window instead of growing to fill it.
         stats_layout.setColumnStretch(2, 1)
@@ -210,7 +209,10 @@ class DashboardTab(QWidget):
         self.refresh_button.setEnabled(True)
         self.anilist_status_label.setText("AniList: couldn't check status.")
         self.myanimelist_status_label.setText("MyAnimeList: couldn't check status.")
-        self.anime_card.set_subtext(f"Error: {message}", color=DANGER)
+        for card in (self.anilist_card, self.mal_card):
+            card.set_value("Anime", "--")
+            card.set_value("Manga", "--")
+            card.set_subtext(f"Error: {message}", color=DANGER)
 
     def _render_platform_status(self, name: str, label: QLabel, status: PlatformStatus) -> None:
         if not status.authenticated:
@@ -224,16 +226,18 @@ class DashboardTab(QWidget):
             label.setStyleSheet(f"color: {SUCCESS};")
 
     def _render_stat_cards(self, stats: DashboardStats) -> None:
-        self._render_one_stat_card(self.anime_card, stats.anilist.anime_count, stats.myanimelist.anime_count)
-        self._render_one_stat_card(self.manga_card, stats.anilist.manga_count, stats.myanimelist.manga_count)
+        self._render_one_stat_card(self.anilist_card, stats.anilist)
+        self._render_one_stat_card(self.mal_card, stats.myanimelist)
 
-    def _render_one_stat_card(self, card: StatCard, anilist_count: int | None, mal_count: int | None) -> None:
-        if anilist_count is None or mal_count is None:
-            card.set_value("--")
-            card.set_subtext("Log in to both accounts to see this.")
-            card.hide_breakdown()
+    def _render_one_stat_card(self, card: StatCard, status: PlatformStatus) -> None:
+        if status.anime_count is not None and status.manga_count is not None:
+            card.set_value("Anime", status.anime_count)
+            card.set_value("Manga", status.manga_count)
+            card.set_subtext("")
             return
-        card.set_value(f"AniList {anilist_count}  ·  MAL {mal_count}")
-        text, color = _diff_text(anilist_count, mal_count)
-        card.set_subtext(text, color=color)
-        card.set_breakdown(anilist_count, mal_count)
+        card.set_value("Anime", "--")
+        card.set_value("Manga", "--")
+        if not status.authenticated:
+            card.set_subtext("Log in to see this.")
+        elif status.error:
+            card.set_subtext(f"Error: {status.error}", color=DANGER)
