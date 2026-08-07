@@ -1,7 +1,7 @@
 """Main application window: a left sidebar (Dashboard first, Settings last)
-driving a stacked page area -- Dashboard, Sync, Login, Auto-Sync, Mapping
-Issues, Settings. Logs and the Help menu both used to be their own top-level
-things (a separate Logs page, a floating menu-bar item); Logs is now folded
+driving a stacked page area -- Dashboard, Sync, Import / Export, Login,
+Auto-Sync, Mapping Issues, Settings. Logs and the Help menu both used to be
+their own top-level things (a separate Logs page, a floating menu-bar item); Logs is now folded
 into the bottom of the Sync page (see sync_tab.py) and Help lives in
 Settings' "About" section -- both were only ever relevant *from* another
 page, not independent destinations of their own.
@@ -35,6 +35,7 @@ from ..config import Config, ConfigError, default_config_path, load_config
 from . import log_bridge
 from .tabs.auto_sync_tab import AutoSyncTab
 from .tabs.dashboard_tab import DashboardTab
+from .tabs.export_import_tab import ExportImportTab
 from .tabs.login_tab import LoginTab
 from .tabs.mapping_issues_tab import MappingIssuesTab
 from .tabs.settings_tab import SettingsTab
@@ -108,6 +109,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard_tab = DashboardTab(self.get_config)
         self.sync_tab = SyncTab(self.get_config, self.log_handler)
+        self.export_import_tab = ExportImportTab(self.get_config)
         self.login_tab = LoginTab(self.get_config, self.config_path)
         self.auto_sync_tab = AutoSyncTab(self.get_config, self.sync_tab)
         self.mapping_issues_tab = MappingIssuesTab(self.get_config)
@@ -118,6 +120,7 @@ class MainWindow(QMainWindow):
         self._pages: list[tuple[str, str, QWidget]] = [
             ("dashboard", "Dashboard", self.dashboard_tab),
             ("sync", "Sync", self.sync_tab),
+            ("export_import", "Import / Export", self.export_import_tab),
             ("login", "Login", self.login_tab),
             ("auto_sync", "Auto-Sync", self.auto_sync_tab),
             ("mapping_issues", "Mapping Issues", self.mapping_issues_tab),

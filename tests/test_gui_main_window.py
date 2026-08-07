@@ -44,12 +44,12 @@ def window(qt_app: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 class TestMainWindow:
-    def test_all_six_pages_present_in_dashboard_first_settings_last_order(
+    def test_all_seven_pages_present_in_dashboard_first_settings_last_order(
         self, window: MainWindow
     ) -> None:
         titles = [window.nav_list.item(i).text() for i in range(window.nav_list.count())]
         assert titles == [
-            "Dashboard", "Sync", "Login", "Auto-Sync", "Mapping Issues", "Settings",
+            "Dashboard", "Sync", "Import / Export", "Login", "Auto-Sync", "Mapping Issues", "Settings",
         ]
 
     def test_dashboard_is_the_page_shown_on_startup(self, window: MainWindow) -> None:

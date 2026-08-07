@@ -47,6 +47,23 @@ def cap_width(widget: QWidget, width: int) -> QWidget:
     return widget
 
 
+def field_and_button_row(field: QWidget, button: QWidget, total_width: int) -> QHBoxLayout:
+    """A field (e.g. a read-only path QLineEdit) plus a trailing button,
+    sized so their combined width exactly matches `total_width` -- keeps the
+    button's right edge aligned with cap_width()-ed fields above/below it in
+    the same form, instead of the button overhanging past them."""
+    row = QHBoxLayout()
+    row.setSpacing(6)
+    field.setFixedWidth(total_width - button.sizeHint().width() - row.spacing())
+    row.addWidget(field)
+    row.addWidget(button)
+    # Without this, the button (not the field) is what QHBoxLayout stretches
+    # to fill the form field column's leftover width, since the field is now
+    # fixed-width -- same reasoning as left_aligned()'s trailing stretch.
+    row.addStretch(1)
+    return row
+
+
 def left_aligned(widget: QWidget, width: int | None = None) -> QHBoxLayout:
     """Wraps `widget` (typically a QPushButton) in a row with a trailing
     stretch, so it reads as a normal-sized, left-aligned control instead of
