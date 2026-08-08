@@ -249,7 +249,7 @@ class TestLibraryStats:
     """The stats-source selector renders from whatever DashboardStats the
     last fetch produced -- switching it never triggers a new fetch (both
     platforms' LibraryStats already came back together), and the
-    AniList-only Days Watched card is hidden outright under MyAnimeList
+    AniList-only Days Watched row is hidden outright under MyAnimeList
     since MAL's data can't support it (see stats.py)."""
 
     _ANILIST_STATS = LibraryStats(
@@ -279,7 +279,7 @@ class TestLibraryStats:
         ),
     )
 
-    def test_anilist_selected_by_default_shows_its_stats_and_days_watched_card(
+    def test_anilist_selected_by_default_shows_its_stats_and_days_watched_row(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _stub_fetch(monkeypatch, self._BOTH_WITH_STATS)
@@ -287,13 +287,16 @@ class TestLibraryStats:
         wait_until(qt_app, lambda: tab._thread is None)
 
         assert tab.stats_source_combo.currentData() == "anilist"
-        assert tab.days_watched_card.isHidden() is False
-        assert tab.days_watched_card._value_labels["Anime"].text() == "12.3"
-        assert tab.status_anime_card._value_labels["Watching"].text() == "1"
-        assert tab.scores_card._value_labels["Anime"].text() == "8.50"
-        assert tab.progress_card._value_labels["Episodes watched"].text() == "100"
+        assert tab.anime_stats_card._row_widgets["Days Watched"].isHidden() is False
+        assert tab.anime_stats_card._value_labels["Days Watched"].text() == "12.3"
+        assert tab.anime_status_card._legend_value_labels["current"].text() == "1"
+        assert tab.anime_stats_card._value_labels["Mean Score"].text() == "8.50"
+        assert tab.anime_stats_card._value_labels["Episodes Watched"].text() == "100"
+        assert tab.manga_status_card._legend_value_labels["current"].text() == "6"
+        assert tab.manga_stats_card._value_labels["Chapters Read"].text() == "200"
+        assert tab.manga_stats_card._value_labels["Volumes Read"].text() == "20"
 
-    def test_switching_to_myanimelist_hides_days_watched_and_rerenders_without_refetching(
+    def test_switching_to_myanimelist_hides_days_watched_row_and_rerenders_without_refetching(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[int] = []
@@ -312,13 +315,13 @@ class TestLibraryStats:
         )
 
         assert len(calls) == 1  # switching sources must not trigger a network call
-        assert tab.days_watched_card.isHidden() is True
-        assert tab.status_anime_card._value_labels["Watching"].text() == "11"
-        assert tab.scores_card._value_labels["Anime"].text() == "6.00"
-        assert tab.scores_card._value_labels["Manga"].text() == "--"
-        assert tab.progress_card._value_labels["Episodes watched"].text() == "50"
+        assert tab.anime_stats_card._row_widgets["Days Watched"].isHidden() is True
+        assert tab.anime_status_card._legend_value_labels["current"].text() == "11"
+        assert tab.anime_stats_card._value_labels["Mean Score"].text() == "6.00"
+        assert tab.manga_stats_card._value_labels["Mean Score"].text() == "--"
+        assert tab.anime_stats_card._value_labels["Episodes Watched"].text() == "50"
 
-    def test_not_authenticated_source_clears_cards_with_login_prompt(
+    def test_not_authenticated_source_clears_widgets_with_login_prompt(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         stats = DashboardStats(
@@ -329,8 +332,9 @@ class TestLibraryStats:
         tab = DashboardTab(lambda: config)
         wait_until(qt_app, lambda: tab._thread is None)
 
-        assert tab.status_anime_card._value_labels["Watching"].text() == "--"
-        assert "Log in to see this" in tab.status_anime_card.subtext_label.text()
+        assert tab.anime_status_card._legend_value_labels["current"].text() == "--"
+        assert "Log in to see this" in tab.anime_status_card.subtext_label.text()
+        assert tab.anime_stats_card._value_labels["Mean Score"].text() == "--"
 
 
 class TestNavigation:

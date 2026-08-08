@@ -20,6 +20,15 @@ doesn't provide, rather than showing them empty or wrong. Both platforms'
 LibraryStats are already sitting on the last fetched DashboardStats, so
 switching sources is a pure re-render -- no extra network call.
 
+Anime and manga get their own side-by-side column each (a status-breakdown
+chart + an overview card), never mixed in the same widget -- an earlier
+version put "episodes watched" and "chapters/volumes read" in one shared
+Progress card, which read as arbitrary and made the anime/manga split hard
+to scan at a glance. The status breakdown is an actual chart (a segmented
+proportional bar, StatusDistributionBar in widgets.py) rather than a bare
+number list, since "how much of this list is done vs in-progress" is a shape
+you can see at a glance in a bar in a way five separate numbers don't show.
+
 Counts and stats are fetched live (dashboard.fetch_dashboard_stats) on a
 worker thread, same run_in_thread pattern as every other page's network
 calls. The unmapped count and last-sync summary are cheap local file reads,
@@ -31,7 +40,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QGridLayout,
@@ -48,8 +57,31 @@ from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
-from ..widgets import Pill, StatCard, apply_page_layout
+from ..widgets import Pill, StatCard, StatusBreakdownCard, apply_page_layout
 from ..workers import run_in_thread
+
+# (bucket_key, display_label, pillKind) -- shared between the anime/manga
+# StatusBreakdownCards, since the underlying buckets are identical (stats.py
+# maps both platforms' own status vocabularies onto the same five). Only the
+# "current" row's label differs (Watching vs Reading), passed in separately.
+_STATUS_KINDS = [
+    ("current", "accent"),
+    ("completed", "success"),
+    ("planning", "neutral"),
+    ("paused", "warning"),
+    ("dropped", "danger"),
+]
+
+
+def _status_segments(current_label: str) -> list[tuple[str, str, str]]:
+    labels = {
+        "current": current_label,
+        "completed": "Completed",
+        "planning": "Planning",
+        "paused": "Paused",
+        "dropped": "Dropped",
+    }
+    return [(key, labels[key], kind) for key, kind in _STATUS_KINDS]
 
 
 def _format_score(value: float | None) -> str:
@@ -143,49 +175,65 @@ class DashboardTab(QWidget):
         header.addStretch(1)
         layout.addLayout(header)
 
-        grid = QGridLayout()
-        grid.setSpacing(16)
-        self.status_anime_card = StatCard(
-            "Anime Status", ["Watching", "Completed", "Planning", "Paused", "Dropped"], group
-        )
-        self.status_manga_card = StatCard(
-            "Manga Status", ["Reading", "Completed", "Planning", "Paused", "Dropped"], group
-        )
-        self.scores_card = StatCard("Mean Score", ["Anime", "Manga"], group)
-        self.progress_card = StatCard(
-            "Progress", ["Episodes watched", "Chapters read", "Volumes read"], group
-        )
-        # AniList-only -- MAL's my_list_status has no per-episode duration to
-        # estimate watch time from, so this card is hidden entirely rather
-        # than shown with a permanent "--" (see _render_library_stats).
-        self.days_watched_card = StatCard("Days Watched (est.)", ["Anime"], group)
-        self._library_stat_cards = [
-            self.status_anime_card,
-            self.status_manga_card,
-            self.scores_card,
-            self.progress_card,
-            self.days_watched_card,
+        columns = QHBoxLayout()
+        columns.setSpacing(24)
+        columns.addLayout(self._build_anime_stats_column(group))
+        columns.addLayout(self._build_manga_stats_column(group))
+        layout.addLayout(columns)
+
+        self._library_stat_widgets = [
+            self.anime_status_card,
+            self.anime_stats_card,
+            self.manga_status_card,
+            self.manga_stats_card,
         ]
-        # See theme.py's QFrame#card[compact="true"] rule -- these cards are
-        # packed two-per-row in the grid below, and don't need the 28px
-        # title-clearance margin a lone StatCard normally gets.
-        for card in self._library_stat_cards:
-            card.setProperty("compact", True)
-        # The two 5-row status cards share a row so neither pads the other
-        # with dead space; the three shorter cards (2/3/1 rows) share the row
-        # below for the same reason -- mixing a 5-row and a 1-row card in one
-        # row (as an anime/manga/anime grouping would) leaves a much taller
-        # gap under the short card, since a QGridLayout row is as tall as its
-        # tallest cell regardless of column.
-        grid.addWidget(self.status_anime_card, 0, 0, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(self.status_manga_card, 0, 1, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(self.scores_card, 1, 0, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(self.progress_card, 1, 1, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(self.days_watched_card, 1, 2, Qt.AlignmentFlag.AlignTop)
-        grid.setColumnStretch(3, 1)
-        layout.addLayout(grid)
+        # See theme.py's QFrame#card[compact="true"] rule -- these cards sit
+        # two-per-column here, and don't need the 28px title-clearance margin
+        # a lone StatCard normally gets under a page-level heading.
+        for widget in self._library_stat_widgets:
+            widget.setProperty("compact", True)
 
         return group
+
+    def _build_anime_stats_column(self, parent: QWidget) -> QVBoxLayout:
+        column = QVBoxLayout()
+        column.setSpacing(12)
+        heading = QLabel("Anime", parent)
+        heading.setObjectName("sectionHeading")
+        column.addWidget(heading)
+
+        self.anime_status_card = StatusBreakdownCard(
+            "Status", _status_segments("Watching"), parent
+        )
+        column.addWidget(self.anime_status_card)
+        # Days Watched is AniList-only -- MAL's my_list_status has no
+        # per-episode duration to estimate watch time from, so this row is
+        # hidden entirely rather than shown as a permanent "--" (see
+        # _render_library_stats).
+        self.anime_stats_card = StatCard(
+            "Overview", ["Mean Score", "Episodes Watched", "Days Watched"], parent
+        )
+        column.addWidget(self.anime_stats_card)
+        column.addStretch(1)
+        return column
+
+    def _build_manga_stats_column(self, parent: QWidget) -> QVBoxLayout:
+        column = QVBoxLayout()
+        column.setSpacing(12)
+        heading = QLabel("Manga", parent)
+        heading.setObjectName("sectionHeading")
+        column.addWidget(heading)
+
+        self.manga_status_card = StatusBreakdownCard(
+            "Status", _status_segments("Reading"), parent
+        )
+        column.addWidget(self.manga_status_card)
+        self.manga_stats_card = StatCard(
+            "Overview", ["Mean Score", "Chapters Read", "Volumes Read"], parent
+        )
+        column.addWidget(self.manga_stats_card)
+        column.addStretch(1)
+        return column
 
     def _build_status_group(self) -> QGroupBox:
         group = QGroupBox("Status", self)
@@ -291,9 +339,9 @@ class DashboardTab(QWidget):
             card.set_value("Anime", "--")
             card.set_value("Manga", "--")
             card.set_subtext(f"Error: {message}", color=DANGER)
-        for card in self._library_stat_cards:
-            card.clear_values()
-            card.set_subtext(f"Error: {message}", color=DANGER)
+        for widget in self._library_stat_widgets:
+            widget.clear_values()
+            widget.set_subtext(f"Error: {message}", color=DANGER)
 
     def _render_platform_status(self, name: str, label: QLabel, status: PlatformStatus) -> None:
         if not status.authenticated:
@@ -327,10 +375,10 @@ class DashboardTab(QWidget):
 
     def _render_library_stats(self) -> None:
         source = self.stats_source_combo.currentData()
-        # AniList-only widget -- see the days_watched_card comment in
-        # _build_library_stats_group. Toggled on every selector change even
-        # if we have no data yet, so it's never briefly visible under MAL.
-        self.days_watched_card.setVisible(source == "anilist")
+        # AniList-only row -- see the Overview-card comment in
+        # _build_anime_stats_column. Toggled on every selector change even if
+        # we have no data yet, so it's never briefly visible under MAL.
+        self.anime_stats_card.set_row_visible("Days Watched", source == "anilist")
 
         if self._last_dashboard_stats is None:
             return
@@ -339,42 +387,48 @@ class DashboardTab(QWidget):
             if source == "anilist"
             else self._last_dashboard_stats.myanimelist
         )
-        self._render_library_stat_cards(status)
+        self._render_library_stat_widgets(status)
 
-    def _render_library_stat_cards(self, status: PlatformStatus) -> None:
+    def _render_library_stat_widgets(self, status: PlatformStatus) -> None:
         stats = status.stats
         if stats is None:
             subtext = "Log in to see this." if not status.authenticated else ""
             if status.error:
                 subtext = f"Error: {status.error}"
-            for card in self._library_stat_cards:
-                card.clear_values()
-                card.set_subtext(subtext, color=DANGER if status.error else None)
+            for widget in self._library_stat_widgets:
+                widget.clear_values()
+                widget.set_subtext(subtext, color=DANGER if status.error else None)
             return
 
-        for card in self._library_stat_cards:
-            card.set_subtext("")
+        for widget in self._library_stat_widgets:
+            widget.set_subtext("")
 
-        self.status_anime_card.set_value("Watching", stats.anime_status.current)
-        self.status_anime_card.set_value("Completed", stats.anime_status.completed)
-        self.status_anime_card.set_value("Planning", stats.anime_status.planning)
-        self.status_anime_card.set_value("Paused", stats.anime_status.paused)
-        self.status_anime_card.set_value("Dropped", stats.anime_status.dropped)
+        self.anime_status_card.set_counts(
+            {
+                "current": stats.anime_status.current,
+                "completed": stats.anime_status.completed,
+                "planning": stats.anime_status.planning,
+                "paused": stats.anime_status.paused,
+                "dropped": stats.anime_status.dropped,
+            }
+        )
+        self.manga_status_card.set_counts(
+            {
+                "current": stats.manga_status.current,
+                "completed": stats.manga_status.completed,
+                "planning": stats.manga_status.planning,
+                "paused": stats.manga_status.paused,
+                "dropped": stats.manga_status.dropped,
+            }
+        )
 
-        self.status_manga_card.set_value("Reading", stats.manga_status.current)
-        self.status_manga_card.set_value("Completed", stats.manga_status.completed)
-        self.status_manga_card.set_value("Planning", stats.manga_status.planning)
-        self.status_manga_card.set_value("Paused", stats.manga_status.paused)
-        self.status_manga_card.set_value("Dropped", stats.manga_status.dropped)
-
-        self.scores_card.set_value("Anime", _format_score(stats.anime_mean_score))
-        self.scores_card.set_value("Manga", _format_score(stats.manga_mean_score))
-
-        self.progress_card.set_value("Episodes watched", stats.anime_episodes_watched)
-        self.progress_card.set_value("Chapters read", stats.manga_chapters_read)
-        self.progress_card.set_value("Volumes read", stats.manga_volumes_read)
-
+        self.anime_stats_card.set_value("Mean Score", _format_score(stats.anime_mean_score))
+        self.anime_stats_card.set_value("Episodes Watched", stats.anime_episodes_watched)
         if stats.anime_days_watched is not None:
-            self.days_watched_card.set_value("Anime", f"{stats.anime_days_watched:.1f}")
+            self.anime_stats_card.set_value("Days Watched", f"{stats.anime_days_watched:.1f}")
         else:
-            self.days_watched_card.set_value("Anime", "--")
+            self.anime_stats_card.set_value("Days Watched", "--")
+
+        self.manga_stats_card.set_value("Mean Score", _format_score(stats.manga_mean_score))
+        self.manga_stats_card.set_value("Chapters Read", stats.manga_chapters_read)
+        self.manga_stats_card.set_value("Volumes Read", stats.manga_volumes_read)

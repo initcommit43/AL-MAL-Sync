@@ -200,6 +200,41 @@ QLabel[pillKind="neutral"] {{ background: {SURFACE_ALT}; color: {TEXT_SECONDARY}
 QLabel[pillKind="anilist"] {{ background: {ANILIST_COLOR}; color: {_BG_PRIMARY}; }}
 QLabel[pillKind="myanimelist"] {{ background: {MYANIMELIST_COLOR}; }}
 
+/* Same pillKind color tokens, applied to a QFrame instead of a QLabel --
+   StatusDistributionBar's chart segments and StatusBreakdownCard's legend
+   dots (see widgets.py) are plain colored rectangles/squares, not pill
+   chips, so they skip the padding/font rules above. */
+QFrame[pillKind="success"] {{ background: {SUCCESS}; }}
+QFrame[pillKind="warning"] {{ background: {WARNING}; }}
+QFrame[pillKind="danger"] {{ background: {DANGER}; }}
+QFrame[pillKind="accent"] {{ background: {ACCENT}; }}
+QFrame[pillKind="neutral"] {{ background: {SURFACE_ALT}; }}
+
+/* The generic "neutral" token (SURFACE_ALT) is deliberately close to the
+   page background for pills -- a near-invisible chip reads as "no strong
+   state". That's exactly wrong for a chart segment: it reads as a gap in
+   the bar, not as "planning" having a real share of the list. Bump it to
+   the lighter secondary-text tone specifically here; the ID+attribute
+   selector is more specific than the plain QFrame[pillKind="neutral"] rule
+   above, so it wins for these two widgets without touching neutral pills
+   anywhere else. */
+QFrame#statusBarSegment[pillKind="neutral"], QFrame#legendDot[pillKind="neutral"] {{
+    background: {TEXT_SECONDARY};
+}}
+
+QFrame#statusBarSegment {{
+    border-radius: 3px;
+}}
+
+QFrame#legendDot {{
+    border-radius: 4px;
+}}
+
+QLabel#legendValue {{
+    font-weight: 600;
+    color: {TEXT_PRIMARY};
+}}
+
 /* -- buttons ------------------------------------------------------------ */
 
 QPushButton {{
@@ -464,6 +499,19 @@ QLabel#statValue {{
 
 QLabel#pageTitle {{
     font-size: 20px;
+    font-weight: 700;
+    color: {TEXT_PRIMARY};
+}}
+
+/* A subsection heading within a page/group (e.g. the Dashboard's "Anime" /
+   "Manga" stats columns) -- bold and a step up from body text, but not
+   colored: this app reserves color for a single interactive accent plus
+   semantic status tones (see the module docstring), so two side-by-side
+   headings both fighting for "the" accent blue would just look like a
+   mistake rather than a deliberate distinction. Physical position (left
+   column vs right column) is what actually separates them. */
+QLabel#sectionHeading {{
+    font-size: 15px;
     font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
