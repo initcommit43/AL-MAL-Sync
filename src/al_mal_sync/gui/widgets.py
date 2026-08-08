@@ -212,6 +212,14 @@ class StatCard(QFrame):
     def set_value(self, row_label: str, value: int | str) -> None:
         self._value_labels[row_label].setText(str(value))
 
+    def clear_values(self) -> None:
+        """Resets every row back to the "--" placeholder -- used when the
+        underlying data becomes unavailable (logged out, fetch error, or a
+        widget that only applies to a different data source) instead of
+        leaving stale numbers on screen."""
+        for row_label in self._value_labels:
+            self.set_value(row_label, "--")
+
     def set_subtext(self, text: str, *, color: str | None = None) -> None:
         self.subtext_label.setText(text)
         self.subtext_label.setStyleSheet(f"color: {color};" if color else "")

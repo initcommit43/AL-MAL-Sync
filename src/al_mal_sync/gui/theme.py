@@ -143,6 +143,17 @@ QGroupBox, QFrame#card {{
     padding: 14px;
 }}
 
+/* A StatCard draws its own title inside the frame (see widgets.py), so it
+   never needs the 28px band QGroupBox's *floating* title reserves above it.
+   That's invisible when a single StatCard sits under a page-level heading
+   (the library-size cards), but once several are packed into one grid (the
+   Dashboard's Library Stats section) it stacks up into a very visible dead
+   band between rows -- this variant is opted into per-card via the
+   "compact" property for exactly that case. */
+QFrame#card[compact="true"] {{
+    margin-top: 0px;
+}}
+
 /* Without a visible frame line for the title to straddle (the classic
    bordered-groupbox look design.md explicitly avoids), the title needs its
    own reserved band clearly taller than one line of 15px bold text --

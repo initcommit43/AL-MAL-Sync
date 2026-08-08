@@ -9,8 +9,16 @@ from typing import Any
 import pytest
 
 from al_mal_sync import dashboard
-from al_mal_sync.clients.anilist import AniListAPIError
-from al_mal_sync.clients.myanimelist import MyAnimeListAPIError
+from al_mal_sync.clients.anilist import AniListAPIError, AniListListEntry, AniListMedia
+from al_mal_sync.clients.myanimelist import (
+    MALAnime,
+    MALAnimeListStatus,
+    MALManga,
+    MALMangaListStatus,
+    MALUserAnimeEntry,
+    MALUserMangaEntry,
+    MyAnimeListAPIError,
+)
 from al_mal_sync.config import Config
 
 
@@ -19,26 +27,59 @@ class _FakeOAuth:
         self.needs_init = needs_init
 
 
+def _anilist_anime_entry(i: int) -> AniListListEntry:
+    return AniListListEntry(
+        id=i, status="CURRENT", score=7.0, progress=3,
+        media=AniListMedia(id=i, episodes=12, duration=24),
+    )
+
+
+def _anilist_manga_entry(i: int) -> AniListListEntry:
+    return AniListListEntry(
+        id=i, status="COMPLETED", score=8.0, progress=10, progress_volumes=1,
+        media=AniListMedia(id=i),
+    )
+
+
+def _mal_anime_entry(i: int) -> MALUserAnimeEntry:
+    return MALUserAnimeEntry(
+        anime=MALAnime(id=i),
+        status=MALAnimeListStatus(status="watching", score=6, num_episodes_watched=3),
+    )
+
+
+def _mal_manga_entry(i: int) -> MALUserMangaEntry:
+    return MALUserMangaEntry(
+        manga=MALManga(id=i),
+        status=MALMangaListStatus(
+            status="completed", score=9, num_chapters_read=10, num_volumes_read=1
+        ),
+    )
+
+
 class _FakeAniListClient:
     def __init__(self, *a: Any, **kw: Any) -> None:
         pass
 
-    def get_user_anime_list(self) -> list[Any]:
-        return [object()] * 3
+    def get_user_anime_list(self) -> list[AniListListEntry]:
+        return [_anilist_anime_entry(i) for i in range(3)]
 
-    def get_user_manga_list(self) -> list[Any]:
-        return [object()] * 5
+    def get_user_manga_list(self) -> list[AniListListEntry]:
+        return [_anilist_manga_entry(i) for i in range(5)]
+
+    def get_user_score_format(self) -> str:
+        return "POINT_10"
 
 
 class _FakeMyAnimeListClient:
     def __init__(self, *a: Any, **kw: Any) -> None:
         pass
 
-    def get_user_anime_list(self) -> list[Any]:
-        return [object()] * 4
+    def get_user_anime_list(self) -> list[MALUserAnimeEntry]:
+        return [_mal_anime_entry(i) for i in range(4)]
 
-    def get_user_manga_list(self) -> list[Any]:
-        return [object()] * 4
+    def get_user_manga_list(self) -> list[MALUserMangaEntry]:
+        return [_mal_manga_entry(i) for i in range(4)]
 
 
 class _ErroringAniListClient:
@@ -75,10 +116,14 @@ class TestFetchDashboardStats:
 
         stats = dashboard.fetch_dashboard_stats(_config())
 
-        assert stats.anilist == dashboard.PlatformStatus(authenticated=True, anime_count=3, manga_count=5)
-        assert stats.myanimelist == dashboard.PlatformStatus(
-            authenticated=True, anime_count=4, manga_count=4
-        )
+        assert stats.anilist.authenticated is True
+        assert stats.anilist.anime_count == 3
+        assert stats.anilist.manga_count == 5
+        assert stats.anilist.stats is not None
+        assert stats.myanimelist.authenticated is True
+        assert stats.myanimelist.anime_count == 4
+        assert stats.myanimelist.manga_count == 4
+        assert stats.myanimelist.stats is not None
 
     def test_one_service_not_authenticated_does_not_block_the_other(
         self, monkeypatch: pytest.MonkeyPatch

@@ -19,6 +19,7 @@ from al_mal_sync.config import Config  # noqa: E402
 from al_mal_sync.dashboard import DashboardStats, PlatformStatus  # noqa: E402
 from al_mal_sync.gui.tabs import dashboard_tab as dashboard_tab_module  # noqa: E402
 from al_mal_sync.gui.tabs.dashboard_tab import DashboardTab  # noqa: E402
+from al_mal_sync.stats import LibraryStats, StatusCounts  # noqa: E402
 from al_mal_sync.sync_history import SyncHistoryEntry, save_sync_history  # noqa: E402
 from al_mal_sync.unmapped import UnmappedRecord, UnmappedState, save_unmapped_state  # noqa: E402
 
@@ -242,6 +243,94 @@ class TestRefreshThrottling:
         tab.reload()  # network fetch skipped (staleness window), local reads must still run
 
         assert "2026-02-02" in tab.last_sync_label.text()
+
+
+class TestLibraryStats:
+    """The stats-source selector renders from whatever DashboardStats the
+    last fetch produced -- switching it never triggers a new fetch (both
+    platforms' LibraryStats already came back together), and the
+    AniList-only Days Watched card is hidden outright under MyAnimeList
+    since MAL's data can't support it (see stats.py)."""
+
+    _ANILIST_STATS = LibraryStats(
+        anime_status=StatusCounts(current=1, completed=2, planning=3, paused=4, dropped=5),
+        manga_status=StatusCounts(current=6, completed=7, planning=8, paused=9, dropped=10),
+        anime_episodes_watched=100,
+        manga_chapters_read=200,
+        manga_volumes_read=20,
+        anime_mean_score=8.5,
+        manga_mean_score=7.25,
+        anime_days_watched=12.3,
+    )
+    _MAL_STATS = LibraryStats(
+        anime_status=StatusCounts(current=11, completed=12, planning=13, paused=14, dropped=15),
+        manga_status=StatusCounts(current=16, completed=17, planning=18, paused=19, dropped=20),
+        anime_episodes_watched=50,
+        manga_chapters_read=60,
+        manga_volumes_read=6,
+        anime_mean_score=6.0,
+        manga_mean_score=None,
+        anime_days_watched=None,  # MAL can never supply this
+    )
+    _BOTH_WITH_STATS = DashboardStats(
+        anilist=PlatformStatus(authenticated=True, anime_count=15, manga_count=40, stats=_ANILIST_STATS),
+        myanimelist=PlatformStatus(
+            authenticated=True, anime_count=65, manga_count=76, stats=_MAL_STATS
+        ),
+    )
+
+    def test_anilist_selected_by_default_shows_its_stats_and_days_watched_card(
+        self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _stub_fetch(monkeypatch, self._BOTH_WITH_STATS)
+        tab = DashboardTab(lambda: config)
+        wait_until(qt_app, lambda: tab._thread is None)
+
+        assert tab.stats_source_combo.currentData() == "anilist"
+        assert tab.days_watched_card.isHidden() is False
+        assert tab.days_watched_card._value_labels["Anime"].text() == "12.3"
+        assert tab.status_anime_card._value_labels["Watching"].text() == "1"
+        assert tab.scores_card._value_labels["Anime"].text() == "8.50"
+        assert tab.progress_card._value_labels["Episodes watched"].text() == "100"
+
+    def test_switching_to_myanimelist_hides_days_watched_and_rerenders_without_refetching(
+        self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[int] = []
+
+        def counting_fetch(cfg: Config) -> DashboardStats:
+            calls.append(1)
+            return self._BOTH_WITH_STATS
+
+        monkeypatch.setattr(dashboard_tab_module, "fetch_dashboard_stats", counting_fetch)
+        tab = DashboardTab(lambda: config)
+        wait_until(qt_app, lambda: tab._thread is None)
+        assert len(calls) == 1
+
+        tab.stats_source_combo.setCurrentIndex(
+            tab.stats_source_combo.findData("myanimelist")
+        )
+
+        assert len(calls) == 1  # switching sources must not trigger a network call
+        assert tab.days_watched_card.isHidden() is True
+        assert tab.status_anime_card._value_labels["Watching"].text() == "11"
+        assert tab.scores_card._value_labels["Anime"].text() == "6.00"
+        assert tab.scores_card._value_labels["Manga"].text() == "--"
+        assert tab.progress_card._value_labels["Episodes watched"].text() == "50"
+
+    def test_not_authenticated_source_clears_cards_with_login_prompt(
+        self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stats = DashboardStats(
+            anilist=PlatformStatus(authenticated=False),
+            myanimelist=PlatformStatus(authenticated=True, anime_count=1, manga_count=1, stats=self._MAL_STATS),
+        )
+        _stub_fetch(monkeypatch, stats)
+        tab = DashboardTab(lambda: config)
+        wait_until(qt_app, lambda: tab._thread is None)
+
+        assert tab.status_anime_card._value_labels["Watching"].text() == "--"
+        assert "Log in to see this" in tab.status_anime_card.subtext_label.text()
 
 
 class TestNavigation:

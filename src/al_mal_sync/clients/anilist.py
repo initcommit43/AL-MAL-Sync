@@ -41,6 +41,7 @@ query ($username: String, $type: MediaType) {{
                     title {{ romaji english native }}
                     {_STATUS_FIELD}
                     episodes
+                    duration
                     seasonYear
                     isFavourite
                 }}
@@ -305,6 +306,7 @@ class AniListMedia:
     status: str = ""
     is_favourite: bool = False
     episodes: int | None = None  # anime only
+    duration: int | None = None  # anime only, minutes per episode
     season_year: int | None = None  # anime only
     media_type: str = ""  # manga only ("type" is a Python builtin, avoid shadowing)
     format: str = ""  # manga only
@@ -320,6 +322,7 @@ class AniListMedia:
             status=data.get("status") or "",
             is_favourite=data.get("isFavourite", False),
             episodes=data.get("episodes"),
+            duration=data.get("duration"),
             season_year=data.get("seasonYear"),
             media_type=data.get("type") or "",
             format=data.get("format") or "",
