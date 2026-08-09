@@ -588,3 +588,123 @@ class StatusBreakdownCard(QFrame):
         self.subtext_label.setText(text)
         self.subtext_label.setStyleSheet(f"color: {color};" if color else "")
         self.subtext_label.setVisible(bool(text))
+
+
+class ColumnChart(QWidget):
+    """A vertical bar/column histogram, painted directly with QPainter --
+    AniList's own "Score" chart is exactly this shape (one column per score
+    bucket, value printed above the bar, category label below it), and it
+    needs a real baseline + per-column height rather than the proportional
+    *widths* GenreBreakdownCard's layout-stretch bars use, so it's custom
+    painting rather than nested QHBoxLayouts."""
+
+    _CHART_HEIGHT = 90
+    _VALUE_LABEL_HEIGHT = 16
+    _AXIS_LABEL_HEIGHT = 16
+    _BAR_GAP = 6
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._data: list[tuple[str, int]] = []
+        self.setMinimumHeight(self._CHART_HEIGHT + self._VALUE_LABEL_HEIGHT + self._AXIS_LABEL_HEIGHT)
+
+    def set_data(self, data: list[tuple[str, int]]) -> None:
+        """`data`: (category_label, value) pairs in display order, zeros
+        included -- a fixed set of columns (e.g. every score 1-10) is what
+        makes this a histogram with a stable shape rather than a top-N list
+        like GenreBreakdownCard's."""
+        self._data = data
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ARG002 -- Qt override signature
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if not self._data:
+            painter.end()
+            return
+
+        count = len(self._data)
+        width = self.width()
+        bar_width = max(2.0, (width - self._BAR_GAP * (count + 1)) / count)
+        max_value = max((value for _label, value in self._data), default=0) or 1
+        baseline_y = self._VALUE_LABEL_HEIGHT + self._CHART_HEIGHT
+
+        value_font = QFont(painter.font())
+        value_font.setPointSize(8)
+        value_font.setBold(True)
+        axis_font = QFont(painter.font())
+        axis_font.setPointSize(8)
+
+        x = float(self._BAR_GAP)
+        for label, value in self._data:
+            bar_height = (value / max_value) * (self._CHART_HEIGHT - 6) if value else 0.0
+            if bar_height > 0:
+                bar_rect = QRectF(x, baseline_y - bar_height, bar_width, bar_height)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(ACCENT))
+                painter.drawRoundedRect(bar_rect, 2, 2)
+
+                painter.setFont(value_font)
+                painter.setPen(QColor(TEXT_PRIMARY))
+                value_rect = QRectF(
+                    x - 4, baseline_y - bar_height - self._VALUE_LABEL_HEIGHT, bar_width + 8, self._VALUE_LABEL_HEIGHT
+                )
+                painter.drawText(value_rect, Qt.AlignmentFlag.AlignCenter, str(value))
+
+            painter.setFont(axis_font)
+            painter.setPen(QColor(TEXT_SECONDARY))
+            axis_rect = QRectF(x - 4, baseline_y + 4, bar_width + 8, self._AXIS_LABEL_HEIGHT)
+            painter.drawText(axis_rect, Qt.AlignmentFlag.AlignCenter, label)
+
+            x += bar_width + self._BAR_GAP
+        painter.end()
+
+
+class ScoreDistributionCard(QFrame):
+    """A card wrapping a ColumnChart for the Dashboard's score histogram --
+    always the fixed 1-10 whole-number buckets stats.py computes, so unlike
+    GenreBreakdownCard there's no top-N ranking to do here, just filling in
+    whichever buckets have entries."""
+
+    _BUCKETS = range(1, 11)
+
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("card")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        self.title_label = QLabel(title, self)
+        self.title_label.setObjectName("muted")
+        layout.addWidget(self.title_label)
+
+        self.chart = ColumnChart(self)
+        layout.addWidget(self.chart)
+
+        self._placeholder_label = QLabel("--", self)
+        self._placeholder_label.setObjectName("muted")
+        layout.addWidget(self._placeholder_label)
+
+        self.subtext_label = QLabel("", self)
+        self.subtext_label.setObjectName("muted")
+        self.subtext_label.setWordWrap(True)
+        self.subtext_label.setVisible(False)
+        layout.addWidget(self.subtext_label)
+
+        self.set_distribution({})
+
+    def set_distribution(self, counts: dict[int, int]) -> None:
+        has_data = any(counts.values())
+        self.chart.setVisible(has_data)
+        self._placeholder_label.setVisible(not has_data)
+        self.chart.set_data([(str(bucket), counts.get(bucket, 0)) for bucket in self._BUCKETS])
+        self.set_subtext("")
+
+    def clear_values(self) -> None:
+        self.set_distribution({})
+
+    def set_subtext(self, text: str, *, color: str | None = None) -> None:
+        self.subtext_label.setText(text)
+        self.subtext_label.setStyleSheet(f"color: {color};" if color else "")
+        self.subtext_label.setVisible(bool(text))

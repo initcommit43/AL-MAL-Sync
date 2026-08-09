@@ -20,18 +20,17 @@ doesn't provide, rather than showing them empty or wrong. Both platforms'
 LibraryStats are already sitting on the last fetched DashboardStats, so
 switching sources is a pure re-render -- no extra network call.
 
-Anime and manga get their own side-by-side column each (a status-breakdown
-chart + an overview card), never mixed in the same widget -- an earlier
-version put "episodes watched" and "chapters/volumes read" in one shared
-Progress card, which read as arbitrary and made the anime/manga split hard
-to scan at a glance. The status breakdown is an actual chart (a segmented
-proportional bar, StatusDistributionBar in widgets.py) rather than a bare
-number list, since "how much of this list is done vs in-progress" is a shape
-you can see at a glance in a bar in a way five separate numbers don't show.
-
-The whole page is wrapped in a QScrollArea -- without it, the Library Stats
-section below the fold just gets cut off on a window shorter than the
-content, with no way to reach it.
+Anime and manga get their own side-by-side column each (status donut,
+overview, score histogram, top genres), never mixed in the same widget --
+an earlier version put "episodes watched" and "chapters/volumes read" in
+one shared Progress card, which read as arbitrary and made the anime/manga
+split hard to scan at a glance. Modeled after AniList's own stats page
+(icons, donut/column charts, not just label:value text), scaled down to
+what fits one page: DonutChart for the status breakdown, ScoreDistributionCard
+for the score histogram, GenreBreakdownCard's bars for top genres, and
+IconBadge-adorned StatCard rows for the Overview/Library-size numbers (all
+in widgets.py). The whole page is wrapped in a QScrollArea so this doesn't
+just get cut off on a window shorter than the content.
 
 Counts and stats are fetched live (dashboard.fetch_dashboard_stats) on a
 worker thread, same run_in_thread pattern as every other page's network
@@ -63,7 +62,14 @@ from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
-from ..widgets import GenreBreakdownCard, Pill, StatCard, StatusBreakdownCard, apply_page_layout
+from ..widgets import (
+    GenreBreakdownCard,
+    Pill,
+    ScoreDistributionCard,
+    StatCard,
+    StatusBreakdownCard,
+    apply_page_layout,
+)
 from ..workers import run_in_thread
 
 # (bucket_key, display_label, pillKind) -- shared between the anime/manga
@@ -205,9 +211,11 @@ class DashboardTab(QWidget):
         self._library_stat_widgets = [
             self.anime_status_card,
             self.anime_stats_card,
+            self.anime_score_card,
             self.anime_genre_card,
             self.manga_status_card,
             self.manga_stats_card,
+            self.manga_score_card,
             self.manga_genre_card,
         ]
         # See theme.py's QFrame#card[compact="true"] rule -- these cards sit
@@ -240,6 +248,8 @@ class DashboardTab(QWidget):
             icons={"Mean Score": "star", "Episodes Watched": "play", "Days Watched": "clock"},
         )
         column.addWidget(self.anime_stats_card)
+        self.anime_score_card = ScoreDistributionCard("Score Distribution", parent)
+        column.addWidget(self.anime_score_card)
         self.anime_genre_card = GenreBreakdownCard("Top Genres", parent)
         column.addWidget(self.anime_genre_card)
         column.addStretch(1)
@@ -263,6 +273,8 @@ class DashboardTab(QWidget):
             icons={"Mean Score": "star", "Chapters Read": "play", "Volumes Read": "book"},
         )
         column.addWidget(self.manga_stats_card)
+        self.manga_score_card = ScoreDistributionCard("Score Distribution", parent)
+        column.addWidget(self.manga_score_card)
         self.manga_genre_card = GenreBreakdownCard("Top Genres", parent)
         column.addWidget(self.manga_genre_card)
         column.addStretch(1)
@@ -465,6 +477,9 @@ class DashboardTab(QWidget):
         self.manga_stats_card.set_value("Mean Score", _format_score(stats.manga_mean_score))
         self.manga_stats_card.set_value("Chapters Read", stats.manga_chapters_read)
         self.manga_stats_card.set_value("Volumes Read", stats.manga_volumes_read)
+
+        self.anime_score_card.set_distribution(stats.anime_score_distribution)
+        self.manga_score_card.set_distribution(stats.manga_score_distribution)
 
         self.anime_genre_card.set_counts(stats.anime_genre_counts)
         self.manga_genre_card.set_counts(stats.manga_genre_counts)
