@@ -23,8 +23,13 @@ the Dashboard's "needs attention" count).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+import math
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QToolButton, QVBoxLayout, QWidget
+
+from .theme import ACCENT, ACCENT_SOFT
 
 PAGE_MARGIN = 24
 PAGE_SPACING = 16
@@ -151,6 +156,84 @@ class Pill(QLabel):
         self.set_kind(kind)
 
 
+class IconBadge(QWidget):
+    """A small rounded-square badge with a minimal vector glyph, painted
+    directly with QPainter -- no icon-font or SVG asset dependency, just a
+    handful of primitive shapes per `kind`. Pairs a StatCard row's number
+    with a pictogram the way AniList's own stats page does (a monitor icon
+    next to "Total Anime", a play triangle next to "Episodes Watched", ...)
+    instead of leaving every row as bare label:value text."""
+
+    _SIZE = 32
+
+    def __init__(self, kind: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._kind = kind
+        self.setFixedSize(self._SIZE, self._SIZE)
+
+    def paintEvent(self, event) -> None:  # noqa: ARG002 -- Qt override signature
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        bounds = QRectF(0, 0, self._SIZE, self._SIZE)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(ACCENT_SOFT))
+        painter.drawRoundedRect(bounds, 8, 8)
+
+        glyph_rect = bounds.adjusted(8, 8, -8, -8)
+        draw = getattr(self, f"_draw_{self._kind}", None)
+        if draw is not None:
+            draw(painter, glyph_rect)
+        painter.end()
+
+    def _draw_tv(self, painter: QPainter, r: QRectF) -> None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(ACCENT))
+        screen = QRectF(r.left(), r.top(), r.width(), r.height() * 0.72)
+        painter.drawRoundedRect(screen, 1.5, 1.5)
+        stand_width = r.width() * 0.5
+        stand = QRectF(r.center().x() - stand_width / 2, screen.bottom() + 2, stand_width, r.height() * 0.12)
+        painter.drawRect(stand)
+
+    def _draw_book(self, painter: QPainter, r: QRectF) -> None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(ACCENT))
+        page_width = r.width() * 0.46
+        left = QRectF(r.left(), r.top(), page_width, r.height())
+        right = QRectF(r.right() - page_width, r.top(), page_width, r.height())
+        painter.drawRoundedRect(left, 1.5, 1.5)
+        painter.drawRoundedRect(right, 1.5, 1.5)
+
+    def _draw_play(self, painter: QPainter, r: QRectF) -> None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(ACCENT))
+        triangle = QPolygonF([r.topLeft(), QPointF(r.left(), r.bottom()), QPointF(r.right(), r.center().y())])
+        painter.drawPolygon(triangle)
+
+    def _draw_clock(self, painter: QPainter, r: QRectF) -> None:
+        pen = QPen(QColor(ACCENT), 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(r)
+        center = r.center()
+        painter.drawLine(center, QPointF(center.x(), r.top() + r.height() * 0.15))
+        painter.drawLine(center, QPointF(r.right() - r.width() * 0.22, center.y()))
+
+    def _draw_star(self, painter: QPainter, r: QRectF) -> None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(ACCENT))
+        center = r.center()
+        outer = min(r.width(), r.height()) / 2
+        inner = outer * 0.45
+        points = []
+        for i in range(10):
+            angle = math.pi / 2 + i * math.pi / 5
+            radius = outer if i % 2 == 0 else inner
+            points.append(QPointF(center.x() + radius * math.cos(angle), center.y() - radius * math.sin(angle)))
+        painter.drawPolygon(QPolygonF(points))
+
+
 class StatCard(QFrame):
     """A small card: a muted title plus one labeled count row per entry in
     `row_labels` (e.g. "Anime" / "Manga"), and an optional error subtext
@@ -166,9 +249,19 @@ class StatCard(QFrame):
 
     _VALUE_DIGITS = 4
 
-    def __init__(self, title: str, row_labels: list[str], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        title: str,
+        row_labels: list[str],
+        parent: QWidget | None = None,
+        *,
+        icons: dict[str, str] | None = None,
+    ) -> None:
+        """`icons`, if given, maps a subset of `row_labels` to an IconBadge
+        `kind` (see IconBadge) -- rows not in the mapping get no icon."""
         super().__init__(parent)
         self.setObjectName("card")
+        icons = icons or {}
 
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -185,6 +278,8 @@ class StatCard(QFrame):
             row = QHBoxLayout(row_widget)
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(12)
+            if row_label in icons:
+                row.addWidget(IconBadge(icons[row_label], row_widget))
             label = QLabel(row_label, self)
             label.setObjectName("muted")
             row.addWidget(label)

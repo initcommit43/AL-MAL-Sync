@@ -139,8 +139,13 @@ class DashboardTab(QWidget):
 
         stats_layout = QGridLayout()
         stats_layout.setSpacing(16)
-        self.anilist_card = StatCard("AniList Library size", ["Anime", "Manga"], self)
-        self.mal_card = StatCard("MyAnimeList Library size", ["Anime", "Manga"], self)
+        library_size_icons = {"Anime": "tv", "Manga": "book"}
+        self.anilist_card = StatCard(
+            "AniList Library size", ["Anime", "Manga"], self, icons=library_size_icons
+        )
+        self.mal_card = StatCard(
+            "MyAnimeList Library size", ["Anime", "Manga"], self, icons=library_size_icons
+        )
         # StatCard's own fixed-width value column keeps the two cards equal
         # width when it's the *counts* that differ, but "MyAnimeList Library
         # size" is simply longer text than "AniList Library size" -- without
@@ -229,7 +234,10 @@ class DashboardTab(QWidget):
         # hidden entirely rather than shown as a permanent "--" (see
         # _render_library_stats).
         self.anime_stats_card = StatCard(
-            "Overview", ["Mean Score", "Episodes Watched", "Days Watched"], parent
+            "Overview",
+            ["Mean Score", "Episodes Watched", "Days Watched"],
+            parent,
+            icons={"Mean Score": "star", "Episodes Watched": "play", "Days Watched": "clock"},
         )
         column.addWidget(self.anime_stats_card)
         self.anime_genre_card = GenreBreakdownCard("Top Genres", parent)
@@ -249,7 +257,10 @@ class DashboardTab(QWidget):
         )
         column.addWidget(self.manga_status_card)
         self.manga_stats_card = StatCard(
-            "Overview", ["Mean Score", "Chapters Read", "Volumes Read"], parent
+            "Overview",
+            ["Mean Score", "Chapters Read", "Volumes Read"],
+            parent,
+            icons={"Mean Score": "star", "Chapters Read": "play", "Volumes Read": "book"},
         )
         column.addWidget(self.manga_stats_card)
         self.manga_genre_card = GenreBreakdownCard("Top Genres", parent)
