@@ -158,6 +158,29 @@ class TestComputeAnilistStats:
 
         assert result.anime_genre_counts == {}
 
+    def test_score_distribution_buckets_by_whole_number_score(self) -> None:
+        entries = [
+            _al_anime("COMPLETED", score=8.0),
+            _al_anime("COMPLETED", score=8.0),
+            _al_anime("COMPLETED", score=5.0),
+        ]
+
+        result = stats.compute_anilist_stats(entries, [], "POINT_10")
+
+        assert result.anime_score_distribution == {8: 2, 5: 1}
+
+    def test_score_distribution_normalizes_point_100_before_bucketing(self) -> None:
+        entries = [_al_anime("COMPLETED", score=87.0)]
+
+        result = stats.compute_anilist_stats(entries, [], "POINT_100")
+
+        assert result.anime_score_distribution == {9: 1}
+
+    def test_score_distribution_ignores_unscored_entries(self) -> None:
+        result = stats.compute_anilist_stats([_al_anime("PLANNING")], [], "POINT_10")
+
+        assert result.anime_score_distribution == {}
+
 
 class TestComputeMalStats:
     def test_status_breakdown_maps_mal_vocabulary_to_common_buckets(self) -> None:
@@ -215,3 +238,10 @@ class TestComputeMalStats:
 
         assert result.anime_genre_counts == {"Action": 2, "Comedy": 1}
         assert result.manga_genre_counts == {"Romance": 1}
+
+    def test_score_distribution_buckets_native_one_to_ten_scores(self) -> None:
+        entries = [_mal_anime("completed", score=7), _mal_anime("completed", score=7), _mal_anime("completed", score=9)]
+
+        result = stats.compute_mal_stats(entries, [])
+
+        assert result.anime_score_distribution == {7: 2, 9: 1}

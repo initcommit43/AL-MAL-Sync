@@ -84,6 +84,15 @@ def _bump_genres(counts: dict[str, int], genres: list[str]) -> None:
         counts[genre] = counts.get(genre, 0) + 1
 
 
+def _bump_score_bucket(counts: dict[int, int], normalized_score: float) -> None:
+    """Buckets a 0-10-scale score into a whole 1-10 histogram bin -- the
+    GUI's ScoreDistributionCard draws one fixed 1-10 column per bucket, the
+    same shape as MAL's own native score scale, so both platforms' data
+    ends up on identical axes regardless of AniList's scoreFormat."""
+    bucket = max(1, min(10, round(normalized_score)))
+    counts[bucket] = counts.get(bucket, 0) + 1
+
+
 @dataclass
 class LibraryStats:
     anime_status: StatusCounts = field(default_factory=StatusCounts)
@@ -100,6 +109,9 @@ class LibraryStats:
     # ranks and truncates to a top-N list for display.
     anime_genre_counts: dict[str, int] = field(default_factory=dict)
     manga_genre_counts: dict[str, int] = field(default_factory=dict)
+    # Entry counts per whole-number score bucket (1-10), scored entries only.
+    anime_score_distribution: dict[int, int] = field(default_factory=dict)
+    manga_score_distribution: dict[int, int] = field(default_factory=dict)
 
 
 def compute_anilist_stats(
@@ -116,7 +128,9 @@ def compute_anilist_stats(
         _bump(stats.anime_status, _ANILIST_STATUS_MAP.get(entry.status))
         stats.anime_episodes_watched += entry.progress
         if entry.score:
-            anime_scores.append(entry.score / scale * 10.0)
+            normalized = entry.score / scale * 10.0
+            anime_scores.append(normalized)
+            _bump_score_bucket(stats.anime_score_distribution, normalized)
         if entry.media.duration:
             duration_minutes += entry.progress * entry.media.duration
         _bump_genres(stats.anime_genre_counts, entry.media.genres)
@@ -127,7 +141,9 @@ def compute_anilist_stats(
         stats.manga_chapters_read += entry.progress
         stats.manga_volumes_read += entry.progress_volumes
         if entry.score:
-            manga_scores.append(entry.score / scale * 10.0)
+            normalized = entry.score / scale * 10.0
+            manga_scores.append(normalized)
+            _bump_score_bucket(stats.manga_score_distribution, normalized)
         _bump_genres(stats.manga_genre_counts, entry.media.genres)
 
     stats.anime_mean_score = _mean(anime_scores)
@@ -148,6 +164,7 @@ def compute_mal_stats(
         stats.anime_episodes_watched += entry.status.num_episodes_watched
         if entry.status.score:
             anime_scores.append(float(entry.status.score))
+            _bump_score_bucket(stats.anime_score_distribution, entry.status.score)
         _bump_genres(stats.anime_genre_counts, entry.anime.genres)
 
     manga_scores: list[float] = []
@@ -157,6 +174,7 @@ def compute_mal_stats(
         stats.manga_volumes_read += entry.status.num_volumes_read
         if entry.status.score:
             manga_scores.append(float(entry.status.score))
+            _bump_score_bucket(stats.manga_score_distribution, entry.status.score)
         _bump_genres(stats.manga_genre_counts, entry.manga.genres)
 
     stats.anime_mean_score = _mean(anime_scores)
