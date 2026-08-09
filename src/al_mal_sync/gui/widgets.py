@@ -26,13 +26,28 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QToolButton, QVBoxLayout, QWidget
 
-from .theme import ACCENT, ACCENT_SOFT
+from .theme import ACCENT, ACCENT_SOFT, DANGER, SUCCESS, TEXT_PRIMARY, TEXT_SECONDARY, WARNING
 
 PAGE_MARGIN = 24
 PAGE_SPACING = 16
+
+# Chart-painting color lookup, sharing the same pillKind vocabulary as the
+# QSS-driven Pill/GenreBreakdownCard tokens (theme.py) -- charts painted
+# directly with QPainter can't pick up a QSS dynamic-property rule, so they
+# need the actual QColor-able hex values instead. "neutral" reuses
+# TEXT_SECONDARY rather than SURFACE_ALT for the same reason theme.py's own
+# QFrame#statusBarSegment[pillKind="neutral"] override does: a chart segment
+# that's the near-invisible generic pill color reads as a gap, not a slice.
+_CHART_COLORS = {
+    "accent": ACCENT,
+    "success": SUCCESS,
+    "warning": WARNING,
+    "danger": DANGER,
+    "neutral": TEXT_SECONDARY,
+}
 
 
 def apply_page_layout(layout: QLayout) -> None:
@@ -437,56 +452,77 @@ class GenreBreakdownCard(QFrame):
         self.subtext_label.setVisible(bool(text))
 
 
-class StatusDistributionBar(QWidget):
-    """A thin segmented horizontal bar: one colored segment per non-zero
-    status count, sized proportionally to that count's share of the total --
-    a lightweight stand-in for a full chart library (no QtCharts dependency
-    here). QHBoxLayout stretch factors do the proportional math, so this is
-    plain layout, not custom painting. Segment colors reuse the same
-    `pillKind` token vocabulary as Pill (theme.py's QFrame[pillKind=...]
-    rules mirror the QLabel ones), just applied to a QFrame instead."""
+class DonutChart(QWidget):
+    """A ring chart painted directly with QPainter (no QtCharts dependency)
+    -- one arc per non-zero segment, sized proportionally to its share of
+    the total, plus the total printed in the hollow center. Replaces an
+    earlier flat StatusDistributionBar: AniList's own stats page uses actual
+    pie/donut charts for exactly this kind of share-of-whole data ("cake
+    charts", per the user's own description), and a dashboard that's
+    otherwise all bars and text benefits from the shape variety. Segment
+    colors reuse the same `pillKind` token vocabulary as Pill, resolved
+    through _CHART_COLORS since a QPainter pen needs a real QColor rather
+    than a QSS dynamic-property selector."""
 
-    _HEIGHT = 10
+    _SIZE = 96
+    _THICKNESS = 15
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(2)
-        self.setFixedHeight(self._HEIGHT)
+        self._segments: list[tuple[str, int]] = []
+        self.setFixedSize(self._SIZE, self._SIZE)
 
     def set_counts(self, segments: list[tuple[str, int]]) -> None:
-        """`segments`: (pillKind, count) pairs in display order. Zero-count
-        segments are skipped rather than rendered as an invisible sliver."""
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """`segments`: (pillKind, count) pairs in display order."""
+        self._segments = segments
+        self.update()
 
-        total = sum(count for _kind, count in segments)
+    def paintEvent(self, event) -> None:  # noqa: ARG002 -- Qt override signature
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        inset = self._THICKNESS / 2
+        ring_rect = QRectF(inset, inset, self._SIZE - 2 * inset, self._SIZE - 2 * inset)
+        total = sum(count for _kind, count in self._segments)
+
+        pen = QPen()
+        pen.setWidthF(self._THICKNESS)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         if total <= 0:
-            empty = QFrame(self)
-            empty.setObjectName("statusBarSegment")
-            empty.setProperty("pillKind", "neutral")
-            self._layout.addWidget(empty)
-            return
+            pen.setColor(QColor(_CHART_COLORS["neutral"]))
+            painter.setPen(pen)
+            painter.drawArc(ring_rect, 0, 360 * 16)
+        else:
+            # Qt angles are in 1/16ths of a degree, counter-clockwise from
+            # 3 o'clock; starting at 90 (12 o'clock) and subtracting each
+            # segment's span walks the ring clockwise, matching the legend's
+            # top-to-bottom reading order.
+            start_angle = 90 * 16
+            for kind, count in self._segments:
+                if count <= 0:
+                    continue
+                span = round(count / total * 360 * 16)
+                pen.setColor(QColor(_CHART_COLORS.get(kind, _CHART_COLORS["neutral"])))
+                painter.setPen(pen)
+                painter.drawArc(ring_rect, start_angle, -span)
+                start_angle -= span
 
-        for kind, count in segments:
-            if count <= 0:
-                continue
-            segment = QFrame(self)
-            segment.setObjectName("statusBarSegment")
-            segment.setProperty("pillKind", kind)
-            self._layout.addWidget(segment, count)
+        painter.setPen(QColor(TEXT_PRIMARY))
+        font = QFont(painter.font())
+        font.setPointSize(15)
+        font.setBold(True)
+        painter.setFont(font)
+        center_text = str(total) if total > 0 else "--"
+        painter.drawText(QRectF(0, 0, self._SIZE, self._SIZE), Qt.AlignmentFlag.AlignCenter, center_text)
+        painter.end()
 
 
 class StatusBreakdownCard(QFrame):
-    """A card pairing a StatusDistributionBar with a legend of exact counts
-    -- the Dashboard's Anime/Manga Status widgets. `segments` fixes the
-    bucket order/labels/colors once at construction (the same status bucket
-    reads as "Watching" for anime and "Reading" for manga, e.g.); set_counts
-    just supplies the numbers per refresh."""
+    """A card pairing a DonutChart with a legend of exact counts -- the
+    Dashboard's Anime/Manga Status widgets. `segments` fixes the bucket
+    order/labels/colors once at construction (the same status bucket reads
+    as "Watching" for anime and "Reading" for manga, e.g.); set_counts just
+    supplies the numbers per refresh."""
 
     def __init__(
         self, title: str, segments: list[tuple[str, str, str]], parent: QWidget | None = None
@@ -503,30 +539,33 @@ class StatusBreakdownCard(QFrame):
         self.title_label.setObjectName("muted")
         layout.addWidget(self.title_label)
 
-        self.bar = StatusDistributionBar(self)
-        layout.addWidget(self.bar)
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        self.chart = DonutChart(self)
+        row.addWidget(self.chart)
 
         legend = QVBoxLayout()
         legend.setSpacing(6)
         self._legend_value_labels: dict[str, QLabel] = {}
         for bucket_key, display_label, kind in segments:
-            row = QHBoxLayout()
-            row.setSpacing(8)
+            legend_row = QHBoxLayout()
+            legend_row.setSpacing(8)
             dot = QFrame(self)
             dot.setObjectName("legendDot")
             dot.setProperty("pillKind", kind)
             dot.setFixedSize(8, 8)
-            row.addWidget(dot)
+            legend_row.addWidget(dot)
             label = QLabel(display_label, self)
             label.setObjectName("muted")
-            row.addWidget(label)
-            row.addStretch(1)
+            legend_row.addWidget(label)
+            legend_row.addStretch(1)
             value = QLabel("--", self)
             value.setObjectName("legendValue")
-            row.addWidget(value)
-            legend.addLayout(row)
+            legend_row.addWidget(value)
+            legend.addLayout(legend_row)
             self._legend_value_labels[bucket_key] = value
-        layout.addLayout(legend)
+        row.addLayout(legend, 1)
+        layout.addLayout(row)
 
         self.subtext_label = QLabel("", self)
         self.subtext_label.setObjectName("muted")
@@ -535,13 +574,13 @@ class StatusBreakdownCard(QFrame):
         layout.addWidget(self.subtext_label)
 
     def set_counts(self, counts: dict[str, int]) -> None:
-        self.bar.set_counts([(kind, counts.get(key, 0)) for key, _label, kind in self._segments])
+        self.chart.set_counts([(kind, counts.get(key, 0)) for key, _label, kind in self._segments])
         for bucket_key, _label, _kind in self._segments:
             self._legend_value_labels[bucket_key].setText(str(counts.get(bucket_key, 0)))
         self.set_subtext("")
 
     def clear_values(self) -> None:
-        self.bar.set_counts([])
+        self.chart.set_counts([])
         for value in self._legend_value_labels.values():
             value.setText("--")
 

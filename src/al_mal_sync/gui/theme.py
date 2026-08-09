@@ -210,9 +210,10 @@ QLabel[pillKind="anilist"] {{ background: {ANILIST_COLOR}; color: {_BG_PRIMARY};
 QLabel[pillKind="myanimelist"] {{ background: {MYANIMELIST_COLOR}; }}
 
 /* Same pillKind color tokens, applied to a QFrame instead of a QLabel --
-   StatusDistributionBar's chart segments and StatusBreakdownCard's legend
-   dots (see widgets.py) are plain colored rectangles/squares, not pill
-   chips, so they skip the padding/font rules above. */
+   GenreBreakdownCard's bar segments and StatusBreakdownCard's legend dots
+   (see widgets.py) are plain colored rectangles/squares, not pill chips, so
+   they skip the padding/font rules above. StatusBreakdownCard's own chart
+   is a DonutChart, painted directly with QPainter rather than QSS. */
 QFrame[pillKind="success"] {{ background: {SUCCESS}; }}
 QFrame[pillKind="warning"] {{ background: {WARNING}; }}
 QFrame[pillKind="danger"] {{ background: {DANGER}; }}
