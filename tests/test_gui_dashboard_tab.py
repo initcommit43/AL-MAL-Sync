@@ -130,7 +130,9 @@ class TestStatsWorker:
         assert tab.mal_card._value_labels["Anime"].text() == "8"
         assert tab.mal_card._value_labels["Manga"].text() == "5"
         assert tab.anilist_card.subtext_label.isVisible() is False
-        assert "AniList: connected" in tab.anilist_status_label.text()
+        anilist_icon = tab.accounts_card._status_icons["anilist"]
+        assert anilist_icon._state == "success"
+        assert "AniList: connected" in anilist_icon.toolTip()
 
     def test_not_authenticated_shows_login_prompt_on_that_platforms_card(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
@@ -147,8 +149,12 @@ class TestStatsWorker:
         assert "Log in to see this" in tab.anilist_card.subtext_label.text()
         assert tab.anilist_card._value_labels["Anime"].text() == "--"
         assert tab.mal_card.subtext_label.isVisible() is False
-        assert "AniList: not logged in" in tab.anilist_status_label.text()
-        assert "MyAnimeList: connected" in tab.myanimelist_status_label.text()
+        anilist_icon = tab.accounts_card._status_icons["anilist"]
+        mal_icon = tab.accounts_card._status_icons["myanimelist"]
+        assert anilist_icon._state == "danger"
+        assert "AniList: not logged in" in anilist_icon.toolTip()
+        assert mal_icon._state == "success"
+        assert "MyAnimeList: connected" in mal_icon.toolTip()
 
     def test_error_on_one_platform_still_shows_the_other(
         self, qt_app: QApplication, config: Config, monkeypatch: pytest.MonkeyPatch
@@ -160,12 +166,16 @@ class TestStatsWorker:
         _stub_fetch(monkeypatch, stats)
 
         tab = DashboardTab(lambda: config)
-        wait_until(qt_app, lambda: "boom" in tab.anilist_status_label.text())
+        anilist_icon = tab.accounts_card._status_icons["anilist"]
+        mal_icon = tab.accounts_card._status_icons["myanimelist"]
+        wait_until(qt_app, lambda: "boom" in anilist_icon.toolTip())
 
-        assert "boom" in tab.anilist_status_label.text()
+        assert anilist_icon._state == "warning"
+        assert "boom" in anilist_icon.toolTip()
         assert "boom" in tab.anilist_card.subtext_label.text()
         assert tab.mal_card._value_labels["Anime"].text() == "1"
-        assert "MyAnimeList: connected" in tab.myanimelist_status_label.text()
+        assert mal_icon._state == "success"
+        assert "MyAnimeList: connected" in mal_icon.toolTip()
 
 
 class TestRefreshThrottling:

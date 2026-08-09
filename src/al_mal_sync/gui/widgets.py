@@ -29,7 +29,18 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QToolButton, QVBoxLayout, QWidget
 
-from .theme import ACCENT, ACCENT_SOFT, DANGER, SUCCESS, TEXT_PRIMARY, TEXT_SECONDARY, WARNING
+from .theme import (
+    ACCENT,
+    ACCENT_SOFT,
+    ANILIST_COLOR,
+    DANGER,
+    MYANIMELIST_COLOR,
+    PAGE_BG,
+    SUCCESS,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+    WARNING,
+)
 
 PAGE_MARGIN = 24
 PAGE_SPACING = 16
@@ -247,6 +258,170 @@ class IconBadge(QWidget):
             radius = outer if i % 2 == 0 else inner
             points.append(QPointF(center.x() + radius * math.cos(angle), center.y() - radius * math.sin(angle)))
         painter.drawPolygon(QPolygonF(points))
+
+
+class PlatformBadge(QWidget):
+    """A small colored-circle monogram for a platform (AniList/MyAnimeList),
+    reusing the same "colored circle + bold initials" approach as the app's
+    own window icon (main_window.py's _build_app_icon) rather than trying to
+    reproduce either site's real logo. Uses the brand-color pair (theme.py's
+    ANILIST_COLOR/MYANIMELIST_COLOR) already used everywhere else two
+    platforms' numbers sit side by side."""
+
+    _SIZE = 28
+    _LABELS = {"anilist": "AL", "myanimelist": "M"}
+    _COLORS = {"anilist": ANILIST_COLOR, "myanimelist": MYANIMELIST_COLOR}
+    # ANILIST_COLOR is a bright, light blue -- dark text reads best on it
+    # (matches theme.py's QLabel[pillKind="accent"] override). MYANIMELIST_COLOR
+    # is a medium purple, closer to SUCCESS/neutral pills, which keep the
+    # default light text rather than overriding it -- same choice here.
+    _TEXT_COLORS = {"anilist": PAGE_BG, "myanimelist": TEXT_PRIMARY}
+
+    def __init__(self, kind: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._kind = kind
+        self.setFixedSize(self._SIZE, self._SIZE)
+
+    def paintEvent(self, event) -> None:  # noqa: ARG002 -- Qt override signature
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bounds = QRectF(0, 0, self._SIZE, self._SIZE)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(self._COLORS[self._kind]))
+        painter.drawEllipse(bounds)
+
+        painter.setPen(QColor(self._TEXT_COLORS[self._kind]))
+        font = QFont(painter.font())
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(bounds, Qt.AlignmentFlag.AlignCenter, self._LABELS[self._kind])
+        painter.end()
+
+
+class StatusIcon(QWidget):
+    """A small colored circle with a checkmark/exclamation/cross glyph,
+    painted with QPainter -- the Dashboard's Accounts card uses this instead
+    of a "connected."/"not logged in." sentence, so the state reads at a
+    glance from color+shape alone. The full descriptive text (including any
+    fetch-error message) isn't lost, just demoted to this widget's tooltip
+    (see AccountStatusCard.set_platform_status)."""
+
+    _SIZE = 20
+    _COLORS = {"success": SUCCESS, "warning": WARNING, "danger": DANGER, "checking": TEXT_SECONDARY}
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._state = "checking"
+        self.setFixedSize(self._SIZE, self._SIZE)
+
+    def set_state(self, state: str) -> None:
+        self._state = state
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: ARG002 -- Qt override signature
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bounds = QRectF(0, 0, self._SIZE, self._SIZE)
+        color = QColor(self._COLORS.get(self._state, DANGER))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(bounds)
+
+        # "checking" (fetch in flight, state not known yet) is a plain dot
+        # -- no glyph -- so it can't be mistaken for a real success/warning/
+        # danger reading before the fetch actually completes.
+        if self._state == "checking":
+            painter.end()
+            return
+
+        pen = QPen(QColor(PAGE_BG), 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        r = bounds.adjusted(5, 5, -5, -5)
+        if self._state == "success":
+            painter.drawLine(
+                QPointF(r.left(), r.top() + r.height() * 0.55),
+                QPointF(r.left() + r.width() * 0.4, r.bottom()),
+            )
+            painter.drawLine(QPointF(r.left() + r.width() * 0.4, r.bottom()), r.topRight())
+        elif self._state == "warning":
+            painter.drawLine(QPointF(r.center().x(), r.top()), QPointF(r.center().x(), r.bottom() - 3))
+            dot = QPointF(r.center().x(), r.bottom())
+            painter.drawLine(dot, dot)
+        else:
+            painter.drawLine(r.topLeft(), r.bottomRight())
+            painter.drawLine(r.topRight(), r.bottomLeft())
+        painter.end()
+
+
+class AccountStatusCard(QFrame):
+    """Replaces the old plain-text "Accounts" group box: pairs each
+    platform's PlatformBadge monogram with a colored StatusIcon instead of
+    a "connected."/"not logged in." sentence sitting in its own separate
+    section. Lives as the first card in the Dashboard's Library size row
+    instead, since it's the same "one glance per platform" shape as those
+    cards."""
+
+    _PLATFORMS = [("anilist", "AniList"), ("myanimelist", "MyAnimeList")]
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("card")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+
+        self.title_label = QLabel("Accounts", self)
+        self.title_label.setObjectName("muted")
+        layout.addWidget(self.title_label)
+
+        self._status_icons: dict[str, StatusIcon] = {}
+        for key, label in self._PLATFORMS:
+            row_widget = QWidget(self)
+            row = QHBoxLayout(row_widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(10)
+            row.addWidget(PlatformBadge(key, row_widget))
+            name_label = QLabel(label, row_widget)
+            row.addWidget(name_label)
+            row.addStretch(1)
+            status_icon = StatusIcon(row_widget)
+            row.addWidget(status_icon)
+            layout.addWidget(row_widget)
+            self._status_icons[key] = status_icon
+
+    def set_platform_status(self, key: str, label: str, *, authenticated: bool, error: str | None) -> None:
+        icon = self._status_icons[key]
+        if not authenticated:
+            icon.set_state("danger")
+            icon.setToolTip(f"{label}: not logged in.")
+        elif error:
+            icon.set_state("warning")
+            icon.setToolTip(f"{label}: logged in, but couldn't load data ({error}).")
+        else:
+            icon.set_state("success")
+            icon.setToolTip(f"{label}: connected.")
+
+    def set_checking(self) -> None:
+        """Called right before a fetch starts -- resets both platforms back
+        to the neutral "checking" dot so a stale success/danger reading from
+        the *previous* fetch never lingers through the new one."""
+        for key, label in self._PLATFORMS:
+            icon = self._status_icons[key]
+            icon.set_state("checking")
+            icon.setToolTip(f"{label}: checking...")
+
+    def set_error(self, message: str) -> None:
+        """Both platforms failed for a reason unrelated to login state (the
+        fetch itself raised) -- distinct from set_platform_status's
+        "not logged in" danger reading, which would otherwise be misleading
+        here."""
+        for key, label in self._PLATFORMS:
+            icon = self._status_icons[key]
+            icon.set_state("danger")
+            icon.setToolTip(f"{label}: {message}.")
 
 
 class StatCard(QFrame):

@@ -1,12 +1,19 @@
 """Dashboard page: the first thing a user sees. A quick-glance summary --
-how big each platform's library is (one stat card per platform, anime and
-manga counts together, since "AniList vs MyAnimeList" is the comparison a
-user actually cares about here, not "anime vs manga"), whether both accounts
-are connected, and whether anything needs attention -- with a "Review" jump
-straight to Mapping Issues, since that one's conditional (only appears when
-there's actually something to act on). No AniList/MyAnimeList numeric IDs
-anywhere here; those only matter on the Mapping Issues page where they're
-actually actionable.
+how big each platform's library is, whether both accounts are connected,
+and whether anything needs attention -- with a "Review" jump straight to
+Mapping Issues, since that one's conditional (only appears when there's
+actually something to act on). No AniList/MyAnimeList numeric IDs anywhere
+here; those only matter on the Mapping Issues page where they're actually
+actionable.
+
+Accounts is a card (AccountStatusCard in widgets.py), not the separate
+plain-text group box an earlier version used -- a PlatformBadge monogram +
+colored StatusIcon per platform reads at a glance the way "AniList:
+connected." text doesn't, and it sits as the first card in the same
+Library-size row rather than its own section, since it's the same
+"one glance per platform" shape as those cards. The full status sentence
+(including any fetch-error text) isn't gone, just demoted to the icon's
+tooltip.
 
 Deliberately has no "Go to Sync"/"Go to Login" buttons -- those pages are
 already one click away in the always-visible sidebar, so a second button here
@@ -61,8 +68,9 @@ from ...config import Config
 from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
-from ..theme import DANGER, SUCCESS, WARNING
+from ..theme import DANGER
 from ..widgets import (
+    AccountStatusCard,
     GenreBreakdownCard,
     Pill,
     ScoreDistributionCard,
@@ -141,10 +149,9 @@ class DashboardTab(QWidget):
         header.addWidget(self.refresh_button)
         layout.addLayout(header)
 
-        layout.addWidget(self._build_accounts_group())
-
         stats_layout = QGridLayout()
         stats_layout.setSpacing(16)
+        self.accounts_card = AccountStatusCard(self)
         library_size_icons = {"Anime": "tv", "Manga": "book"}
         self.anilist_card = StatCard(
             "AniList Library size", ["Anime", "Manga"], self, icons=library_size_icons
@@ -157,14 +164,18 @@ class DashboardTab(QWidget):
         # size" is simply longer text than "AniList Library size" -- without
         # normalizing to the wider card's natural width here too, the titles
         # alone would make the cards visibly mismatched regardless of counts.
+        # The Accounts card's content is different in shape (two short rows,
+        # not a title + big number), so it's left out of this normalization
+        # and just takes its own natural width.
         card_width = max(self.anilist_card.sizeHint().width(), self.mal_card.sizeHint().width())
         self.anilist_card.setMinimumWidth(card_width)
         self.mal_card.setMinimumWidth(card_width)
-        stats_layout.addWidget(self.anilist_card, 0, 0)
-        stats_layout.addWidget(self.mal_card, 0, 1)
-        # A third, empty stretch column so the two cards keep a sensible
-        # width on a wide window instead of growing to fill it.
-        stats_layout.setColumnStretch(2, 1)
+        stats_layout.addWidget(self.accounts_card, 0, 0)
+        stats_layout.addWidget(self.anilist_card, 0, 1)
+        stats_layout.addWidget(self.mal_card, 0, 2)
+        # A fourth, empty stretch column so the cards keep a sensible width
+        # on a wide window instead of growing to fill it.
+        stats_layout.setColumnStretch(3, 1)
         layout.addLayout(stats_layout)
 
         layout.addWidget(self._build_library_stats_group())
@@ -174,19 +185,6 @@ class DashboardTab(QWidget):
         layout.addStretch(1)
 
         self.reload()
-
-    def _build_accounts_group(self) -> QGroupBox:
-        group = QGroupBox("Accounts", self)
-        row = QHBoxLayout(group)
-
-        self.anilist_status_label = QLabel("AniList: checking...", self)
-        self.anilist_status_label.setWordWrap(True)
-        row.addWidget(self.anilist_status_label, 1)
-        self.myanimelist_status_label = QLabel("MyAnimeList: checking...", self)
-        self.myanimelist_status_label.setWordWrap(True)
-        row.addWidget(self.myanimelist_status_label, 1)
-
-        return group
 
     def _build_library_stats_group(self) -> QGroupBox:
         group = QGroupBox("Library Stats", self)
@@ -326,8 +324,7 @@ class DashboardTab(QWidget):
             return  # fetched recently enough -- avoid hammering the real APIs on quick navigation
 
         self.refresh_button.setEnabled(False)
-        self.anilist_status_label.setText("AniList: checking...")
-        self.myanimelist_status_label.setText("MyAnimeList: checking...")
+        self.accounts_card.set_checking()
 
         self._thread, self._worker = run_in_thread(
             self,
@@ -367,8 +364,15 @@ class DashboardTab(QWidget):
         self._last_fetch_at = time.monotonic()
         self.refresh_button.setEnabled(True)
         self._last_dashboard_stats = stats
-        self._render_platform_status("AniList", self.anilist_status_label, stats.anilist)
-        self._render_platform_status("MyAnimeList", self.myanimelist_status_label, stats.myanimelist)
+        self.accounts_card.set_platform_status(
+            "anilist", "AniList", authenticated=stats.anilist.authenticated, error=stats.anilist.error
+        )
+        self.accounts_card.set_platform_status(
+            "myanimelist",
+            "MyAnimeList",
+            authenticated=stats.myanimelist.authenticated,
+            error=stats.myanimelist.error,
+        )
         self._render_stat_cards(stats)
         self._render_library_stats()
 
@@ -378,8 +382,7 @@ class DashboardTab(QWidget):
         self._last_fetch_at = time.monotonic()
         self.refresh_button.setEnabled(True)
         self._last_dashboard_stats = None
-        self.anilist_status_label.setText("AniList: couldn't check status.")
-        self.myanimelist_status_label.setText("MyAnimeList: couldn't check status.")
+        self.accounts_card.set_error("couldn't check status")
         for card in (self.anilist_card, self.mal_card):
             card.set_value("Anime", "--")
             card.set_value("Manga", "--")
@@ -387,17 +390,6 @@ class DashboardTab(QWidget):
         for widget in self._library_stat_widgets:
             widget.clear_values()
             widget.set_subtext(f"Error: {message}", color=DANGER)
-
-    def _render_platform_status(self, name: str, label: QLabel, status: PlatformStatus) -> None:
-        if not status.authenticated:
-            label.setText(f"{name}: not logged in.")
-            label.setStyleSheet(f"color: {DANGER};")
-        elif status.error:
-            label.setText(f"{name}: logged in, but couldn't load data ({status.error}).")
-            label.setStyleSheet(f"color: {WARNING};")
-        else:
-            label.setText(f"{name}: connected.")
-            label.setStyleSheet(f"color: {SUCCESS};")
 
     def _render_stat_cards(self, stats: DashboardStats) -> None:
         self._render_one_stat_card(self.anilist_card, stats.anilist)
