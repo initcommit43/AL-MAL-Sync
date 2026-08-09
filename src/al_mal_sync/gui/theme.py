@@ -92,6 +92,15 @@ QMainWindow, QStackedWidget, #pageContainer {{
     background: {PAGE_BG};
 }}
 
+/* A page wrapped in a scroll area (see dashboard_tab.py's "isn't scrollable
+   and cuts content off" fix) -- QScrollArea's own frame and its viewport
+   both default to a plain widget background that doesn't inherit PAGE_BG,
+   which shows as a mismatched rectangle behind the page content otherwise. */
+QScrollArea#pageScrollArea, QScrollArea#pageScrollArea > QWidget > QWidget {{
+    background: {PAGE_BG};
+    border: none;
+}}
+
 /* -- sidebar --------------------------------------------------------- */
 
 QWidget#sidebarContainer {{

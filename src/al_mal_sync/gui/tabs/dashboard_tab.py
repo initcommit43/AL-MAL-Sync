@@ -29,6 +29,10 @@ proportional bar, StatusDistributionBar in widgets.py) rather than a bare
 number list, since "how much of this list is done vs in-progress" is a shape
 you can see at a glance in a bar in a way five separate numbers don't show.
 
+The whole page is wrapped in a QScrollArea -- without it, the Library Stats
+section below the fold just gets cut off on a window shorter than the
+content, with no way to reach it.
+
 Counts and stats are fetched live (dashboard.fetch_dashboard_stats) on a
 worker thread, same run_in_thread pattern as every other page's network
 calls. The unmapped count and last-sync summary are cheap local file reads,
@@ -43,11 +47,13 @@ from typing import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -107,7 +113,17 @@ class DashboardTab(QWidget):
         self._last_fetch_at = 0.0
         self._last_dashboard_stats: DashboardStats | None = None
 
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area = QScrollArea(self)
+        scroll_area.setObjectName("pageScrollArea")
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidgetResizable(True)
+        outer_layout.addWidget(scroll_area)
+
+        content = QWidget(scroll_area)
+        scroll_area.setWidget(content)
+        layout = QVBoxLayout(content)
         apply_page_layout(layout)
         header = QHBoxLayout()
         title = QLabel("Dashboard", self)
