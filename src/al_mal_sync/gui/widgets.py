@@ -765,6 +765,112 @@ class StatusBreakdownCard(QFrame):
         self.subtext_label.setVisible(bool(text))
 
 
+class GenreDonutCard(QFrame):
+    """A second view of the same top-N genre ranking GenreBreakdownCard
+    computes, as a DonutChart + legend instead of ranked bars -- mirrors
+    StatusBreakdownCard's chart style (AniList's own Format/Status/Country
+    sections are exactly this: several small pie charts, not just bars).
+    Sits below the Top Genres bar list as a second, differently-shaped read
+    of the same numbers rather than duplicating GenreBreakdownCard's layout
+    logic wholesale.
+
+    Unlike StatusBreakdownCard, the legend's bucket set isn't fixed at
+    construction (which genres appear depends on the library's actual
+    data), so it's rebuilt each set_counts call the same way
+    GenreBreakdownCard's bar rows are -- including wrapping each legend row
+    in its own QWidget so the cleanup loop can actually deleteLater() it
+    (see GenreBreakdownCard's _clear_rows comment for why a bare
+    addLayout() row doesn't work here)."""
+
+    # Only 5 colors in the shared chart palette -- caps how many genres this
+    # can show as distinct slices, same as GenreBreakdownCard's default limit.
+    _SEGMENT_KINDS = ["accent", "success", "warning", "danger", "neutral"]
+
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("card")
+        self._limit = len(self._SEGMENT_KINDS)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        self.title_label = QLabel(title, self)
+        self.title_label.setObjectName("muted")
+        layout.addWidget(self.title_label)
+
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        self.chart = DonutChart(self)
+        row.addWidget(self.chart)
+
+        self._legend_layout = QVBoxLayout()
+        self._legend_layout.setSpacing(6)
+        row.addLayout(self._legend_layout, 1)
+        layout.addLayout(row)
+
+        self._placeholder_label = QLabel("--", self)
+        self._placeholder_label.setObjectName("muted")
+        layout.addWidget(self._placeholder_label)
+
+        self.subtext_label = QLabel("", self)
+        self.subtext_label.setObjectName("muted")
+        self.subtext_label.setWordWrap(True)
+        self.subtext_label.setVisible(False)
+        layout.addWidget(self.subtext_label)
+
+        self.clear_values()
+
+    def _clear_legend(self) -> None:
+        while self._legend_layout.count():
+            item = self._legend_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def set_counts(self, counts: dict[str, int]) -> None:
+        self._clear_legend()
+        top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[: self._limit]
+        has_data = bool(top)
+        self.chart.setVisible(has_data)
+        self._placeholder_label.setVisible(not has_data)
+        if not has_data:
+            self.chart.set_counts([])
+            self.set_subtext("")
+            return
+
+        segments: list[tuple[str, int]] = []
+        for (name, count), kind in zip(top, self._SEGMENT_KINDS):
+            segments.append((kind, count))
+            row_widget = QWidget(self)
+            legend_row = QHBoxLayout(row_widget)
+            legend_row.setContentsMargins(0, 0, 0, 0)
+            legend_row.setSpacing(8)
+            dot = QFrame(row_widget)
+            dot.setObjectName("legendDot")
+            dot.setProperty("pillKind", kind)
+            dot.setFixedSize(8, 8)
+            legend_row.addWidget(dot)
+            label = QLabel(name, row_widget)
+            label.setObjectName("muted")
+            legend_row.addWidget(label)
+            legend_row.addStretch(1)
+            value = QLabel(str(count), row_widget)
+            value.setObjectName("legendValue")
+            legend_row.addWidget(value)
+            self._legend_layout.addWidget(row_widget)
+
+        self.chart.set_counts(segments)
+        self.set_subtext("")
+
+    def clear_values(self) -> None:
+        self.set_counts({})
+
+    def set_subtext(self, text: str, *, color: str | None = None) -> None:
+        self.subtext_label.setText(text)
+        self.subtext_label.setStyleSheet(f"color: {color};" if color else "")
+        self.subtext_label.setVisible(bool(text))
+
+
 class ColumnChart(QWidget):
     """A vertical bar/column histogram, painted directly with QPainter --
     AniList's own "Score" chart is exactly this shape (one column per score

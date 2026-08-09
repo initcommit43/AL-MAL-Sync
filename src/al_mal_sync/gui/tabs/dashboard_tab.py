@@ -28,13 +28,16 @@ LibraryStats are already sitting on the last fetched DashboardStats, so
 switching sources is a pure re-render -- no extra network call.
 
 Anime and manga get their own side-by-side column each (status donut,
-overview, score histogram, top genres), never mixed in the same widget --
-an earlier version put "episodes watched" and "chapters/volumes read" in
-one shared Progress card, which read as arbitrary and made the anime/manga
-split hard to scan at a glance. Modeled after AniList's own stats page
-(icons, donut/column charts, not just label:value text), scaled down to
-what fits one page: DonutChart for the status breakdown, ScoreDistributionCard
-for the score histogram, GenreBreakdownCard's bars for top genres, and
+overview, score histogram, top genres as bars, top genres again as a donut),
+never mixed in the same widget -- an earlier version put "episodes watched"
+and "chapters/volumes read" in one shared Progress card, which read as
+arbitrary and made the anime/manga split hard to scan at a glance. Modeled
+after AniList's own stats page (icons, donut/column charts, not just
+label:value text), scaled down to what fits one page: DonutChart for the
+status breakdown, ScoreDistributionCard for the score histogram,
+GenreBreakdownCard's bars *and* GenreDonutCard's pie slices for top genres
+(same ranked data, two shapes -- AniList's own Format/Status/Country
+sections are exactly this kind of small-pie-chart treatment), and
 IconBadge-adorned StatCard rows for the Overview/Library-size numbers (all
 in widgets.py). The whole page is wrapped in a QScrollArea so this doesn't
 just get cut off on a window shorter than the content.
@@ -72,6 +75,7 @@ from ..theme import DANGER
 from ..widgets import (
     AccountStatusCard,
     GenreBreakdownCard,
+    GenreDonutCard,
     Pill,
     ScoreDistributionCard,
     StatCard,
@@ -211,10 +215,12 @@ class DashboardTab(QWidget):
             self.anime_stats_card,
             self.anime_score_card,
             self.anime_genre_card,
+            self.anime_genre_donut_card,
             self.manga_status_card,
             self.manga_stats_card,
             self.manga_score_card,
             self.manga_genre_card,
+            self.manga_genre_donut_card,
         ]
         # See theme.py's QFrame#card[compact="true"] rule -- these cards sit
         # two-per-column here, and don't need the 28px title-clearance margin
@@ -250,6 +256,8 @@ class DashboardTab(QWidget):
         column.addWidget(self.anime_score_card)
         self.anime_genre_card = GenreBreakdownCard("Top Genres", parent)
         column.addWidget(self.anime_genre_card)
+        self.anime_genre_donut_card = GenreDonutCard("Genre Distribution", parent)
+        column.addWidget(self.anime_genre_donut_card)
         column.addStretch(1)
         return column
 
@@ -275,6 +283,8 @@ class DashboardTab(QWidget):
         column.addWidget(self.manga_score_card)
         self.manga_genre_card = GenreBreakdownCard("Top Genres", parent)
         column.addWidget(self.manga_genre_card)
+        self.manga_genre_donut_card = GenreDonutCard("Genre Distribution", parent)
+        column.addWidget(self.manga_genre_donut_card)
         column.addStretch(1)
         return column
 
@@ -475,3 +485,6 @@ class DashboardTab(QWidget):
 
         self.anime_genre_card.set_counts(stats.anime_genre_counts)
         self.manga_genre_card.set_counts(stats.manga_genre_counts)
+
+        self.anime_genre_donut_card.set_counts(stats.anime_genre_counts)
+        self.manga_genre_donut_card.set_counts(stats.manga_genre_counts)
