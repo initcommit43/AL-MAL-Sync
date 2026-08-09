@@ -24,6 +24,18 @@ than in a top menu bar: a floating "Help" menu with no visual relationship
 to the sidebar-driven rest of the app read as a leftover, not a real part of
 the UI -- folding it into Settings' own footer keeps everything reachable
 from the same nav the rest of the app uses.
+
+The whole page is wrapped in a QScrollArea (same fix as dashboard_tab.py).
+Without it, on a screen short enough that the full stack of group boxes
+doesn't fit the window (e.g. maximized on a 1080p display -- confirmed by
+comparing window.height() against sizeHint().height() on the actual second
+monitor, not just a narrower simulated width), Qt doesn't just cut the
+bottom off -- it *compresses* every widget below its sizeHint to force
+everything to fit, and a QCheckBox's height compressing directly slices the
+bottom off its label text. That read as a font-rendering bug at first
+(text vertically sliced, only on one monitor) and cost real time chasing
+DPI-scaling and QFormLayout-row-height theories before the actual
+"content taller than the window, nowhere to scroll" cause turned up.
 """
 
 from __future__ import annotations
@@ -36,12 +48,14 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -93,7 +107,17 @@ class SettingsTab(QWidget):
         self._get_config = get_config
         self._config_path = config_path
 
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area = QScrollArea(self)
+        scroll_area.setObjectName("pageScrollArea")
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidgetResizable(True)
+        outer_layout.addWidget(scroll_area)
+
+        content = QWidget(scroll_area)
+        scroll_area.setWidget(content)
+        layout = QVBoxLayout(content)
         apply_page_layout(layout)
         title = QLabel("Settings", self)
         title.setObjectName("pageTitle")
@@ -160,7 +184,15 @@ class SettingsTab(QWidget):
 
     def _build_sources_group(self) -> QGroupBox:
         group = QGroupBox("ID-Matching Sources", self)
-        form = QFormLayout(group)
+        # A plain QVBoxLayout, not QFormLayout -- these are single full-width
+        # checkboxes with no "label: field" pairing to justify a form, and
+        # QFormLayout.addRow(widget)'s single-widget row (used when there's
+        # no separate label) was computing a row height too short for a
+        # QCheckBox's actual text, clipping the bottom of every line off.
+        # The "Automatically sync on a schedule" checkbox below (in
+        # _build_watch_group, a QVBoxLayout the whole way) never had this
+        # problem -- same QCheckBox, different layout.
+        layout = QVBoxLayout(group)
         self.offline_db_enabled = QCheckBox("Offline anime database (recommended, anime only)", group)
         self.offline_db_enabled.setToolTip(
             "Uses a downloaded anime database to match titles between AniList and\n"
@@ -190,7 +222,7 @@ class SettingsTab(QWidget):
             self.offline_db_enabled, self.hato_enabled, self.arm_enabled,
             self.jikan_enabled, self.favorites_enabled,
         ):
-            form.addRow(box)
+            layout.addWidget(box)
         return group
 
     def _build_watch_group(self) -> QGroupBox:
