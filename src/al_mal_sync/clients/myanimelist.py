@@ -21,8 +21,8 @@ BASE_URL = "https://api.myanimelist.net/v2/"
 
 # Same field sets as the reference tool's animeFields/mangaFields: id, title, and
 # main_picture come back by default, everything else must be requested explicitly.
-ANIME_FIELDS = "alternative_titles,num_episodes,my_list_status,start_season"
-MANGA_FIELDS = "alternative_titles,num_volumes,num_chapters,my_list_status,start_date"
+ANIME_FIELDS = "alternative_titles,num_episodes,my_list_status,start_season,genres"
+MANGA_FIELDS = "alternative_titles,num_volumes,num_chapters,my_list_status,start_date,genres"
 
 LIST_PAGE_SIZE = 100
 SEARCH_ANIME_LIMIT = 3
@@ -92,6 +92,7 @@ class MALAnime:
     num_episodes: int = 0
     start_season_year: int | None = None
     start_season: str = ""
+    genres: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MALAnime:
@@ -103,6 +104,7 @@ class MALAnime:
             num_episodes=data.get("num_episodes", 0),
             start_season_year=season.get("year"),
             start_season=season.get("season", ""),
+            genres=[g["name"] for g in data.get("genres") or []],
         )
 
 
@@ -152,6 +154,7 @@ class MALManga:
     num_volumes: int = 0
     num_chapters: int = 0
     start_date: str = ""
+    genres: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MALManga:
@@ -162,6 +165,7 @@ class MALManga:
             num_volumes=data.get("num_volumes", 0),
             num_chapters=data.get("num_chapters", 0),
             start_date=data.get("start_date", ""),
+            genres=[g["name"] for g in data.get("genres") or []],
         )
 
 

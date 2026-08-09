@@ -237,6 +237,111 @@ class StatCard(QFrame):
         self.subtext_label.setVisible(bool(text))
 
 
+class GenreBreakdownCard(QFrame):
+    """A card ranking a library's most-common genres: one row per genre in
+    the top N (highest count first, so row 1 doubles as the "favourite
+    genre"), each with a bar sized relative to the top genre's count and its
+    exact entry count alongside. Unlike StatusBreakdownCard, the row set
+    isn't fixed at construction -- which genres appear, and how many rows
+    there are, depends on the library's actual data, so set_counts rebuilds
+    the row widgets each call instead of just updating values in place."""
+
+    _BAR_WIDTH = 90
+    _BAR_HEIGHT = 8
+
+    def __init__(self, title: str, parent: QWidget | None = None, *, limit: int = 5) -> None:
+        super().__init__(parent)
+        self.setObjectName("card")
+        self._limit = limit
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        self.title_label = QLabel(title, self)
+        self.title_label.setObjectName("muted")
+        layout.addWidget(self.title_label)
+
+        self._rows_layout = QVBoxLayout()
+        self._rows_layout.setSpacing(6)
+        layout.addLayout(self._rows_layout)
+
+        self._placeholder_label = QLabel("--", self)
+        self._placeholder_label.setObjectName("muted")
+        layout.addWidget(self._placeholder_label)
+
+        self.subtext_label = QLabel("", self)
+        self.subtext_label.setObjectName("muted")
+        self.subtext_label.setWordWrap(True)
+        self.subtext_label.setVisible(False)
+        layout.addWidget(self.subtext_label)
+
+        self.clear_values()
+
+    def _clear_rows(self) -> None:
+        while self._rows_layout.count():
+            item = self._rows_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def set_counts(self, counts: dict[str, int]) -> None:
+        self._clear_rows()
+        top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[: self._limit]
+        self._placeholder_label.setVisible(not top)
+        if not top:
+            self.set_subtext("")
+            return
+
+        max_count = top[0][1]
+        for name, count in top:
+            # Rows are wrapped in a container QWidget (not just a bare
+            # QHBoxLayout) so _clear_rows()'s item.widget() actually finds
+            # something to deleteLater() next time around -- a bare
+            # addLayout() row's child labels/frames are still parented
+            # directly to `self` and survive takeAt() as invisible-but-alive
+            # orphans, which showed up as stale genre bars bleeding through
+            # after switching the Dashboard's stats source.
+            row_widget = QWidget(self)
+            row = QHBoxLayout(row_widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+
+            name_label = QLabel(name, row_widget)
+            row.addWidget(name_label, 1)
+
+            bar = QWidget(row_widget)
+            bar.setFixedSize(self._BAR_WIDTH, self._BAR_HEIGHT)
+            bar_layout = QHBoxLayout(bar)
+            bar_layout.setContentsMargins(0, 0, 0, 0)
+            bar_layout.setSpacing(0)
+            fill = QFrame(bar)
+            fill.setObjectName("statusBarSegment")
+            fill.setProperty("pillKind", "accent")
+            bar_layout.addWidget(fill, count)
+            if count < max_count:
+                track = QFrame(bar)
+                track.setObjectName("statusBarSegment")
+                track.setProperty("pillKind", "neutral")
+                bar_layout.addWidget(track, max_count - count)
+            row.addWidget(bar)
+
+            count_label = QLabel(str(count), row_widget)
+            count_label.setObjectName("legendValue")
+            count_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            row.addWidget(count_label)
+
+            self._rows_layout.addWidget(row_widget)
+        self.set_subtext("")
+
+    def clear_values(self) -> None:
+        self.set_counts({})
+
+    def set_subtext(self, text: str, *, color: str | None = None) -> None:
+        self.subtext_label.setText(text)
+        self.subtext_label.setStyleSheet(f"color: {color};" if color else "")
+        self.subtext_label.setVisible(bool(text))
+
+
 class StatusDistributionBar(QWidget):
     """A thin segmented horizontal bar: one colored segment per non-zero
     status count, sized proportionally to that count's share of the total --

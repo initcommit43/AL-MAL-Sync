@@ -17,30 +17,46 @@ from al_mal_sync.clients.myanimelist import (
 )
 
 
-def _al_anime(status: str, *, score: float = 0.0, progress: int = 0, duration: int | None = None):
+def _al_anime(
+    status: str,
+    *,
+    score: float = 0.0,
+    progress: int = 0,
+    duration: int | None = None,
+    genres: list[str] | None = None,
+):
     return AniListListEntry(
         id=1, status=status, score=score, progress=progress,
-        media=AniListMedia(id=1, duration=duration),
+        media=AniListMedia(id=1, duration=duration, genres=genres or []),
     )
 
 
-def _al_manga(status: str, *, score: float = 0.0, progress: int = 0, progress_volumes: int = 0):
+def _al_manga(
+    status: str,
+    *,
+    score: float = 0.0,
+    progress: int = 0,
+    progress_volumes: int = 0,
+    genres: list[str] | None = None,
+):
     return AniListListEntry(
         id=1, status=status, score=score, progress=progress, progress_volumes=progress_volumes,
-        media=AniListMedia(id=1),
+        media=AniListMedia(id=1, genres=genres or []),
     )
 
 
-def _mal_anime(status: str, *, score: int = 0, watched: int = 0):
+def _mal_anime(status: str, *, score: int = 0, watched: int = 0, genres: list[str] | None = None):
     return MALUserAnimeEntry(
-        anime=MALAnime(id=1),
+        anime=MALAnime(id=1, genres=genres or []),
         status=MALAnimeListStatus(status=status, score=score, num_episodes_watched=watched),
     )
 
 
-def _mal_manga(status: str, *, score: int = 0, chapters: int = 0, volumes: int = 0):
+def _mal_manga(
+    status: str, *, score: int = 0, chapters: int = 0, volumes: int = 0, genres: list[str] | None = None
+):
     return MALUserMangaEntry(
-        manga=MALManga(id=1),
+        manga=MALManga(id=1, genres=genres or []),
         status=MALMangaListStatus(
             status=status, score=score, num_chapters_read=chapters, num_volumes_read=volumes
         ),
@@ -125,6 +141,23 @@ class TestComputeAnilistStats:
 
         assert result.anime_days_watched is None
 
+    def test_genre_counts_tally_entries_per_genre_across_anime_and_manga(self) -> None:
+        anime_entries = [
+            _al_anime("COMPLETED", genres=["Action", "Comedy"]),
+            _al_anime("CURRENT", genres=["Action"]),
+        ]
+        manga_entries = [_al_manga("COMPLETED", genres=["Romance"])]
+
+        result = stats.compute_anilist_stats(anime_entries, manga_entries, "POINT_10")
+
+        assert result.anime_genre_counts == {"Action": 2, "Comedy": 1}
+        assert result.manga_genre_counts == {"Romance": 1}
+
+    def test_genre_counts_empty_when_entries_have_no_genres(self) -> None:
+        result = stats.compute_anilist_stats([_al_anime("COMPLETED")], [], "POINT_10")
+
+        assert result.anime_genre_counts == {}
+
 
 class TestComputeMalStats:
     def test_status_breakdown_maps_mal_vocabulary_to_common_buckets(self) -> None:
@@ -170,3 +203,15 @@ class TestComputeMalStats:
         result = stats.compute_mal_stats([_mal_anime("watching", watched=100)], [])
 
         assert result.anime_days_watched is None
+
+    def test_genre_counts_tally_entries_per_genre_across_anime_and_manga(self) -> None:
+        anime_entries = [
+            _mal_anime("watching", genres=["Action", "Comedy"]),
+            _mal_anime("completed", genres=["Action"]),
+        ]
+        manga_entries = [_mal_manga("reading", genres=["Romance"])]
+
+        result = stats.compute_mal_stats(anime_entries, manga_entries)
+
+        assert result.anime_genre_counts == {"Action": 2, "Comedy": 1}
+        assert result.manga_genre_counts == {"Romance": 1}

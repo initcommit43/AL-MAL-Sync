@@ -57,7 +57,7 @@ from ...dashboard import DashboardStats, PlatformStatus, fetch_dashboard_stats
 from ...sync_history import load_last_sync
 from ...unmapped import load_unmapped_state
 from ..theme import DANGER, SUCCESS, WARNING
-from ..widgets import Pill, StatCard, StatusBreakdownCard, apply_page_layout
+from ..widgets import GenreBreakdownCard, Pill, StatCard, StatusBreakdownCard, apply_page_layout
 from ..workers import run_in_thread
 
 # (bucket_key, display_label, pillKind) -- shared between the anime/manga
@@ -184,8 +184,10 @@ class DashboardTab(QWidget):
         self._library_stat_widgets = [
             self.anime_status_card,
             self.anime_stats_card,
+            self.anime_genre_card,
             self.manga_status_card,
             self.manga_stats_card,
+            self.manga_genre_card,
         ]
         # See theme.py's QFrame#card[compact="true"] rule -- these cards sit
         # two-per-column here, and don't need the 28px title-clearance margin
@@ -214,6 +216,8 @@ class DashboardTab(QWidget):
             "Overview", ["Mean Score", "Episodes Watched", "Days Watched"], parent
         )
         column.addWidget(self.anime_stats_card)
+        self.anime_genre_card = GenreBreakdownCard("Top Genres", parent)
+        column.addWidget(self.anime_genre_card)
         column.addStretch(1)
         return column
 
@@ -232,6 +236,8 @@ class DashboardTab(QWidget):
             "Overview", ["Mean Score", "Chapters Read", "Volumes Read"], parent
         )
         column.addWidget(self.manga_stats_card)
+        self.manga_genre_card = GenreBreakdownCard("Top Genres", parent)
+        column.addWidget(self.manga_genre_card)
         column.addStretch(1)
         return column
 
@@ -432,3 +438,6 @@ class DashboardTab(QWidget):
         self.manga_stats_card.set_value("Mean Score", _format_score(stats.manga_mean_score))
         self.manga_stats_card.set_value("Chapters Read", stats.manga_chapters_read)
         self.manga_stats_card.set_value("Volumes Read", stats.manga_volumes_read)
+
+        self.anime_genre_card.set_counts(stats.anime_genre_counts)
+        self.manga_genre_card.set_counts(stats.manga_genre_counts)

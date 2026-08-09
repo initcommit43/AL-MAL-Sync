@@ -44,6 +44,7 @@ query ($username: String, $type: MediaType) {{
                     duration
                     seasonYear
                     isFavourite
+                    genres
                 }}
             }}
         }}
@@ -75,6 +76,7 @@ query ($username: String, $type: MediaType) {{
                     chapters
                     volumes
                     isFavourite
+                    genres
                 }}
             }}
         }}
@@ -312,6 +314,7 @@ class AniListMedia:
     format: str = ""  # manga only
     chapters: int | None = None  # manga only
     volumes: int | None = None  # manga only
+    genres: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AniListMedia:
@@ -328,6 +331,7 @@ class AniListMedia:
             format=data.get("format") or "",
             chapters=data.get("chapters"),
             volumes=data.get("volumes"),
+            genres=list(data.get("genres") or []),
         )
 
 

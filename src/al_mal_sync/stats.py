@@ -79,6 +79,11 @@ def _mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def _bump_genres(counts: dict[str, int], genres: list[str]) -> None:
+    for genre in genres:
+        counts[genre] = counts.get(genre, 0) + 1
+
+
 @dataclass
 class LibraryStats:
     anime_status: StatusCounts = field(default_factory=StatusCounts)
@@ -91,6 +96,10 @@ class LibraryStats:
     # None when the source can't supply per-episode duration (always None for
     # MAL -- my_list_status has no duration field to estimate watch time from).
     anime_days_watched: float | None = None
+    # Raw entry-count-per-genre, unsorted -- the GUI's GenreBreakdownCard
+    # ranks and truncates to a top-N list for display.
+    anime_genre_counts: dict[str, int] = field(default_factory=dict)
+    manga_genre_counts: dict[str, int] = field(default_factory=dict)
 
 
 def compute_anilist_stats(
@@ -110,6 +119,7 @@ def compute_anilist_stats(
             anime_scores.append(entry.score / scale * 10.0)
         if entry.media.duration:
             duration_minutes += entry.progress * entry.media.duration
+        _bump_genres(stats.anime_genre_counts, entry.media.genres)
 
     manga_scores: list[float] = []
     for entry in manga_entries:
@@ -118,6 +128,7 @@ def compute_anilist_stats(
         stats.manga_volumes_read += entry.progress_volumes
         if entry.score:
             manga_scores.append(entry.score / scale * 10.0)
+        _bump_genres(stats.manga_genre_counts, entry.media.genres)
 
     stats.anime_mean_score = _mean(anime_scores)
     stats.manga_mean_score = _mean(manga_scores)
@@ -137,6 +148,7 @@ def compute_mal_stats(
         stats.anime_episodes_watched += entry.status.num_episodes_watched
         if entry.status.score:
             anime_scores.append(float(entry.status.score))
+        _bump_genres(stats.anime_genre_counts, entry.anime.genres)
 
     manga_scores: list[float] = []
     for entry in manga_entries:
@@ -145,6 +157,7 @@ def compute_mal_stats(
         stats.manga_volumes_read += entry.status.num_volumes_read
         if entry.status.score:
             manga_scores.append(float(entry.status.score))
+        _bump_genres(stats.manga_genre_counts, entry.manga.genres)
 
     stats.anime_mean_score = _mean(anime_scores)
     stats.manga_mean_score = _mean(manga_scores)
