@@ -1,6 +1,7 @@
 # AL-MAL-Sync
 
 ![CI](https://github.com/initcommit43/AL-MAL-Sync/actions/workflows/ci.yml/badge.svg)
+[![Latest Release](https://img.shields.io/github/v/release/initcommit43/AL-MAL-Sync)](https://github.com/initcommit43/AL-MAL-Sync/releases/latest)
 
 Keep [AniList](https://anilist.co) and [MyAnimeList](https://myanimelist.net)
 in sync: a desktop app with a dashboard and one-click sync, a CLI for
@@ -44,7 +45,12 @@ asymmetry), not translated line-for-line.
 
 ## Installation
 
-Not yet published to PyPI. Install from source:
+**Windows desktop app**: download `AL-MAL-Sync-windows.zip` from the
+[latest release](https://github.com/initcommit43/AL-MAL-Sync/releases/latest),
+extract it anywhere, and run `AL-MAL-Sync.exe` inside the extracted folder.
+No Python install required.
+
+**CLI, or another OS**: not yet published to PyPI, install from source:
 
 ```sh
 git clone https://github.com/initcommit43/AL-MAL-Sync.git
