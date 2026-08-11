@@ -98,17 +98,18 @@ GUI open, since its scheduling only runs while the window is open.
 #### Desktop launcher
 
 For a normal double-click launch instead of `al-mal-sync-gui` from a
-terminal, build a small launcher exe once. It just starts the GUI out of
-`.venv`, so only the few-line stub gets compiled, not PySide6 itself:
+terminal, build a standalone bundle once:
 
 ```sh
 pip install pyinstaller
-pyinstaller --onefile --noconsole --name "AL-MAL-Sync" --distpath . --workpath build/launcher --specpath build/launcher scripts/launcher.py
+pyinstaller --onedir --noconsole --name "AL-MAL-Sync" --distpath dist --workpath build/gui --specpath build/gui --paths src scripts/gui_entry.py
 ```
 
-This drops `AL-MAL-Sync.exe` in the project root. It's a build artifact
-(gitignored, not tracked) tied to the `.venv` next to it, so rebuild it after
-recreating the venv elsewhere.
+This drops a self-contained `dist/AL-MAL-Sync/` folder (`AL-MAL-Sync.exe`
+plus an `_internal/` directory) that runs on its own -- no `.venv` or
+source checkout needs to sit next to it, so the whole folder can be zipped
+up and shared. It's a build artifact (gitignored, not tracked), so rebuild
+it after pulling changes.
 
 ### CLI
 

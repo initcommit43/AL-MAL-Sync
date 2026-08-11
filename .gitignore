@@ -5,7 +5,6 @@ __pycache__/
 venv/
 build/
 dist/
-/AL-MAL-Sync.exe
 
 # local config/secrets
 config.yaml
